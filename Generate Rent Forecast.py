@@ -5,6 +5,8 @@ Created on Thu Dec 16 14:02:02 2021
 @author: jhu
 
 Generate Rent forecast
+
+STILL NEED TO FIGURE OUT HOW TO DO SEASONAL ADJUSTMENT IN PYTHON
 """
 
 
@@ -411,43 +413,158 @@ for qtr in qtrlist:
             
 """ Simulation """
 
-simid = 1
-errmat_onepath = errmat[errmat['path_num']==simid]
-# errmat.dtypes
-simhpi_onepath = sim_hpi[sim_hpi['path_num']==simid]
-sim_histhpi_onepath = sim_hist_hpi_2[sim_hist_hpi_2['path_num']==simid].drop(['hpg_season','unemp'],axis=1)
-hist_onepath = hist_input.copy()
-hist_onepath['path_num'] = simid
-rate_onepath = rate_frm_4[rate_frm_4['path_num']==simid]
+try:
+    del [[fc_input, allsimpath]]
+except:
+    pass
 
-fc_input = qtrlist_2.copy()
-fc_input['path_num']=simid
-fc_input =fc_input.merge(errmat_onepath, how='left', on=['indexcode','qtr','path_num'])
-fc_input =fc_input.merge(simhpi_onepath, how='left', on=['indexcode','qtr','path_num'])
-fc_input =fc_input.merge(sim_histhpi_onepath, how='left', on=['indexcode','qtr','path_num'])
-fc_input =fc_input.merge(hist_onepath, how='left', on=['indexcode','qtr','path_num'])
-fc_input.loc[fc_input['unemp_g'].isnull(),'unemp_g'] = fc_input['unemp_g_sim']
-fc_input.loc[fc_input['hpg_season_last2'].isnull(),'hpg_season_last2'] = fc_input['hpg_season_last2_sim']
-fc_input = fc_input.drop(['unemp_g_sim','hpg_season_last2_sim'],axis=1)
-fc_input['afford_rent'] = np.log(fc_input['inc_p50']*fc_input['m_rentShare']/12) - np.log(fc_input['baserent'])
-fc_input['resid_rent'] = fc_input['resid_rent'].fillna(0.0)
-fc_input = fc_input.merge(parm, how='left', on=['pSFR_group'])
-fc_input = fc_input.sort_values(['path_num','indexcode','qtr'])
-fc_input['qtridx'] = fc_input['qtr']%100
-fc_input = fc_input.merge(rate_onepath[['qtr','path_num','chgslope0_1']], how='left', on=['qtr','path_num'])
-# fc_input['rn'] = fc_input.groupby(['path_num','indexcode'])["qtr"].rank()
-cbsa=12060
-i=9
+# simid = 1
+for  simid in range(1,11):
+    errmat_onepath = errmat[errmat['path_num']==simid]
+    # errmat.dtypes
+    simhpi_onepath = sim_hpi[sim_hpi['path_num']==simid]
+    sim_histhpi_onepath = sim_hist_hpi_2[sim_hist_hpi_2['path_num']==simid].drop(['hpg_season','unemp'],axis=1)
+    hist_onepath = hist_input.copy()
+    hist_onepath['path_num'] = simid
+    rate_onepath = rate_frm_4[rate_frm_4['path_num']==simid]
+    
+    fc_input = qtrlist_2.copy()
+    fc_input['path_num']=simid
+    fc_input =fc_input.merge(errmat_onepath, how='left', on=['indexcode','qtr','path_num'])
+    fc_input =fc_input.merge(simhpi_onepath, how='left', on=['indexcode','qtr','path_num'])
+    fc_input =fc_input.merge(sim_histhpi_onepath, how='left', on=['indexcode','qtr','path_num'])
+    fc_input =fc_input.merge(hist_onepath, how='left', on=['indexcode','qtr','path_num'])
+    fc_input.loc[fc_input['unemp_g'].isnull(),'unemp_g'] = fc_input['unemp_g_sim']
+    fc_input.loc[fc_input['hpg_season_last2'].isnull(),'hpg_season_last2'] = fc_input['hpg_season_last2_sim']
+    fc_input = fc_input.drop(['unemp_g_sim','hpg_season_last2_sim'],axis=1)
+    fc_input['afford_rent'] = np.log(fc_input['inc_p50']*fc_input['m_rentShare']/12) - np.log(fc_input['baserent'])
+    fc_input['resid_rent'] = fc_input['resid_rent'].fillna(0.0)
+    fc_input = fc_input.merge(parm, how='left', on=['pSFR_group'])
+    fc_input = fc_input.sort_values(['path_num','indexcode','qtr'])
+    fc_input['qtridx'] = fc_input['qtr']%100
+    fc_input = fc_input.merge(rate_onepath[['qtr','path_num','chgslope0_1']], how='left', on=['qtr','path_num'])
+    # fc_input['rn'] = fc_input.groupby(['path_num','indexcode'])["qtr"].rank()
+    # cbsa=12060
+    # i=9
+    
+    
+    for cbsa in fc_cbsa_list:
+        fc_onecbsa = fc_input[fc_input['indexcode']==cbsa].reset_index().drop(['index'], axis=1)
+        for i in range(0,len(fc_onecbsa.index)):
+            if np.isnan(fc_onecbsa.loc[i,'ln_rentg']):
+                fc_onecbsa.loc[i,'rentg_l1'] = fc_onecbsa.loc[i-1,'ln_rentg']
+                fc_onecbsa.loc[i,'rentg_l2'] = fc_onecbsa.loc[i-1,'rentg_l1']
+                fc_onecbsa.loc[i,'rentg_l3'] = fc_onecbsa.loc[i-1,'rentg_l2']
+                fc_onecbsa.loc[i,'rentg_l4'] = fc_onecbsa.loc[i-1,'rentg_l3']
+                fc_onecbsa.loc[i,'rentg_l5'] = fc_onecbsa.loc[i-1,'rentg_l4']
+                fc_onecbsa.loc[i,'ln_rentg'] = fc_onecbsa.loc[i,'Intercept'] + (fc_onecbsa.loc[i,'rentg_l1'] * fc_onecbsa.loc[i,'p_rentg_l1']) + (fc_onecbsa.loc[i,'rentg_l2'] * fc_onecbsa.loc[i,'p_rentg_l2'])+ (fc_onecbsa.loc[i,'rentg_l3'] * fc_onecbsa.loc[i,'p_rentg_l3']) + fc_onecbsa.loc[i,'rentg_l4'] * fc_onecbsa.loc[i,'p_rentg_l4']+ fc_onecbsa.loc[i,'rentg_l5'] * fc_onecbsa.loc[i,'p_rentg_l5']+ fc_onecbsa.loc[i,'afford_rent'] * fc_onecbsa.loc[i,'p_afford_rent'] + fc_onecbsa.loc[i,'hpg_season_last2'] * fc_onecbsa.loc[i,'p_hpg_season_last2']+ fc_onecbsa.loc[i,'unemp_g'] * fc_onecbsa.loc[i,'p_unemp_g']+ fc_onecbsa.loc[i,'chgslope0_1'] * fc_onecbsa.loc[i,'p_chgSlope0_1']+ fc_onecbsa.loc[i,'resid_rent']
+        fc_input = pd.concat([fc_input[fc_input['indexcode']!=cbsa], fc_onecbsa], axis=0, ignore_index=True)       
+        
+    
+    
+    try:
+        allsimpath = pd.concat([allsimpath, fc_input[fc_input['qtr']>=fc_start_qtr]], axis=0, ignore_index=True)
+    except:
+        allsimpath = fc_input[fc_input['qtr']>=fc_start_qtr].copy()
+        
+""" Collect Result """
+allsimpath = allsimpath[['indexcode','outlier','qtr','qtridx','ln_rentg','path_num']]
+allsimpath['rn'] = allsimpath.groupby(['path_num','indexcode'])["qtr"].rank()
+allsimpath = allsimpath.merge(ln_seasonality, on=['indexcode','qtridx'], how='left')
+allsimpath['rentg'] = np.exp(allsimpath['ln_rentg'] + allsimpath['seasonality'])
+allsimpath.loc[allsimpath['rn']==1,'rentg'] = 1
+allsimpath = allsimpath.sort_values(['path_num','indexcode','qtr'])
+
+allsimpath['rentidx'] = allsimpath.groupby(['path_num','indexcode'])['rentg'].cumprod() *100
+
+""" weight for US & state index """
+stringH = "select cast(indexcode as int) as indexcode, housing  from modeltestbed.dbo.housing  \n"
+
+cnxn = pyodbc.connect("Driver={SQL Server Native Client 11.0};"
+                     "Server=DFILSQL07.insightlabs.amherst.com;"
+                     "Trusted_Connection=yes;")
+global housing
+housing = pd.read_sql(stringH, cnxn)
+cnxn.close()
+
+allsimpath = allsimpath.merge(housing, on='indexcode', how='left')
+
+def w_avg(df, values, weights):
+    d = df[values]
+    w = df[weights]
+    return (d * w).sum() / w.sum()
+
+allsim_us = allsimpath.groupby(['path_num','qtr']).apply(w_avg, 'rentidx', 'housing').to_frame().reset_index().rename(columns={0:"rentidx"})
+meanpath_us = allsim_us.groupby('qtr')['rentidx'].mean().to_frame().reset_index()
+meanpath_us['indexcode'] ='US'
+
+stringSW = "select distinct a.state, cast(a.cbsa_div as int) as indexcode, N*priceAVM as weight  \n"
+stringSW += "from modeltestbed.dbo.cbsastateAVM a  \n"
+stringSW += "join  modeltestbed.dbo.cbsastateSFD b  \n"
+stringSW += "on a.state =b.state and a.cbsa_div = b.cbsa_div  \n"
+stringSW += "where a.cbsa_div <> ''  \n"
+
+cnxn = pyodbc.connect("Driver={SQL Server Native Client 11.0};"
+                     "Server=DFILSQL07.insightlabs.amherst.com;"
+                     "Trusted_Connection=yes;")
+global cbsa_state
+cbsa_state = pd.read_sql(stringSW, cnxn)
+cnxn.close()
+cbsa_state = cbsa_state.sort_values(['indexcode','state'])
+
+allsim_state = pd.merge(allsimpath, cbsa_state, on='indexcode')
+allsim_state = allsim_state.groupby(['state','path_num','qtr']).apply(w_avg, 'rentidx', 'weight').to_frame().reset_index().rename(columns={0:"rentidx"})
+meanpath_state = allsim_state.groupby(['state','qtr'])['rentidx'].mean().to_frame().reset_index()
+meanpath_state = meanpath_state.rename(columns={"state":"indexcode"})
+
+meanpath = allsimpath.groupby(['indexcode','qtr'])['rentidx'].mean().to_frame().reset_index()
+# meanpath.dtypes
+meanpath['indexcode'] = meanpath['indexcode'].apply(str)
 
 
-for cbsa in fc_cbsa_list:
-    fc_onecbsa = fc_input[fc_input['indexcode']==cbsa].reset_index().drop(['index'], axis=1)
-    for i in range(0,len(fc_onecbsa.index)):
-        if np.isnan(fc_onecbsa.loc[i,'ln_rentg']):
-            fc_onecbsa.loc[i,'rentg_l1'] = fc_onecbsa.loc[i-1,'ln_rentg']
-            fc_onecbsa.loc[i,'rentg_l2'] = fc_onecbsa.loc[i-1,'rentg_l1']
-            fc_onecbsa.loc[i,'rentg_l3'] = fc_onecbsa.loc[i-1,'rentg_l2']
-            fc_onecbsa.loc[i,'rentg_l4'] = fc_onecbsa.loc[i-1,'rentg_l3']
-            fc_onecbsa.loc[i,'rentg_l5'] = fc_onecbsa.loc[i-1,'rentg_l4']
-            fc_onecbsa.loc[i,'ln_rentg'] = fc_onecbsa.loc[i,'Intercept'] + (fc_onecbsa.loc[i,'rentg_l1'] * fc_onecbsa.loc[i,'p_rentg_l1']) + (fc_onecbsa.loc[i,'rentg_l2'] * fc_onecbsa.loc[i,'p_rentg_l2'])+ (fc_onecbsa.loc[i,'rentg_l3'] * fc_onecbsa.loc[i,'p_rentg_l3']) + fc_onecbsa.loc[i,'rentg_l4'] * fc_onecbsa.loc[i,'p_rentg_l4']+ fc_onecbsa.loc[i,'rentg_l5'] * fc_onecbsa.loc[i,'p_rentg_l5']+ fc_onecbsa.loc[i,'afford_rent'] * fc_onecbsa.loc[i,'p_afford_rent'] + fc_onecbsa.loc[i,'hpg_season_last2'] * fc_onecbsa.loc[i,'p_hpg_season_last2']+ fc_onecbsa.loc[i,'unemp_g'] * fc_onecbsa.loc[i,'p_unemp_g']+ fc_onecbsa.loc[i,'chgslope0_1'] * fc_onecbsa.loc[i,'p_chgSlope0_1']+ fc_onecbsa.loc[i,'resid_rent']
-    fc_input = pd.concat([fc_input[fc_input['indexcode']!=cbsa], fc_onecbsa], axis=0, ignore_index=True)       
+allsimpath['indexcode'] = allsimpath['indexcode'].apply(str)
+# allsimpath.dtypes
+allsim_us['indexcode'] = 'US'
+allsim_state = allsim_state.rename(columns={"state": "indexcode"})
+
+allsim_output = pd.concat([allsimpath[['indexcode','path_num','qtr','rentidx']], allsim_state, allsim_us],ignore_index=True).reset_index().drop(['index'],axis=1)
+meanpath_output =  pd.concat([meanpath[['indexcode','qtr','rentidx']], meanpath_state, meanpath_us], ignore_index=True).reset_index().drop(['index'],axis=1)
+
+""" Convert to monthly forecast """
+allsim_month_0 = allsim_output.copy()
+allsim_month_0['rentidx_l1'] = allsim_month_0.groupby(['path_num','indexcode'])['rentidx'].shift(-1)
+allsim_month_0['month'] = (allsim_month_0['qtr']/100).apply(np.floor)*100 + (allsim_month_0['qtr']%100)*3
+allsim_month_0['idx'] = 1
+
+allsim_month_1 = allsim_month_0.copy()
+allsim_month_1['idx'] = 2
+allsim_month_1.loc[(allsim_month_1['month']%100)<12,'month'] = allsim_month_1['month']+1
+allsim_month_1.loc[(allsim_month_1['month']%100)==12,'month'] = (allsim_month_1['qtr']/100).apply(np.floor)*100 + 101
+
+allsim_month_2 = allsim_month_1.copy()
+allsim_month_2['idx'] = 3
+allsim_month_2.loc[(allsim_month_2['month']%100)<12,'month'] = allsim_month_2['month']+1
+allsim_month_2.loc[(allsim_month_2['month']%100)==12,'month'] = (allsim_month_2['qtr']/100).apply(np.floor)*100 + 101
+
+allsim_month = pd.concat([allsim_month_0, allsim_month_1, allsim_month_2], ignore_index=True).reset_index().drop(['index'], axis=1)
+allsim_month = allsim_month.sort_values(['path_num','indexcode','month']).reset_index().drop(['index'], axis=1)
+allsim_month['rentidx'] = ((allsim_month['rentidx_l1']/allsim_month['rentidx'])** ((allsim_month['idx']-1)/3)) * allsim_month['rentidx']
+meanpath_month  = allsim_month.groupby(['indexcode','month'])['rentidx'].mean().to_frame().reset_index()
+meanpath_month['monthfmt'] = pd.to_datetime((meanpath_month['month']*100+1).astype(str), format='%Y%m%d')
+
+""" Combine with historical Index """
+hist_index_all = pd.concat([raw_hist_index, last_month], axis=0)
+#hist_index = hist_index.drop(['index'], axis=1)
+hist_index_all = hist_index_all.sort_values(['indexcode', 'monthfmt'])
+hist_index_all['rentg'] = hist_index_all['rentg'].fillna(0.0)
+hist_index_all['rentg'] = hist_index_all['rentg']+1
+hist_index_all['rentidx'] =(hist_index_all.groupby(['indexcode'])['rentg']).cumprod() *100
+# hist_index_all['rentg']  = hist_index_all.groupby('indexcode')['rentidx'].shift(-1)/hist_index_all['rentidx']
+factor = hist_index_all[hist_index_all['monthfmt'].dt.date == fc_start_mon ]
+factor['factor']= 100/factor['rentidx']
+hist_index_all = hist_index_all.merge(factor[['indexcode','factor']], on='indexcode')
+hist_index_all['rentidx'] = hist_index_all['rentidx'] * hist_index_all['factor']
+
+""" This should be output to irspublish..sf_rentidx_month_dt """
+allidx_output = pd.concat([hist_index_all[['indexcode','month','monthfmt','rentidx']], meanpath_month[meanpath_month['monthfmt'].dt.date>fc_start_mon]], ignore_index=True).reset_index().drop(['index'], axis=1)
+allidx_output = allidx_output.sort_values(['indexcode','monthfmt']).reset_index().drop(['index'], axis=1)
