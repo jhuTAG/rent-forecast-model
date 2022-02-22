@@ -147,10 +147,13 @@ where a.cbsa in (select distinct indexcode from irs.sf_rentidx_monthly)
 order by cbsa;
 quit;
 
+
+proc univariate data=geoW noprint;*class msrMarket ; var  p_sfr ;  output out=P_momPop pctlpre=  sfr_  pctlpts= 33,67; run;
 proc univariate data=geoW noprint;class msrMarket ; var  p_sfr ;  output out=P_momPop2 pctlpre=  sfr_  pctlpts= 33,67; run;
 
 proc sql; create table geoW as
 select a.*
+, case when p_SFR<=p1.sfr_33 then 1 when p_SFR<=p1.sfr_67 then 2 else 3 end as pSFR_group2
 , case when A.msrMarket=1 then
 	case when p_SFR<=p2.sfr_33 then 1 when p_SFR<=p2.sfr_67 then 2 else 3 end 
   ELSE 
@@ -160,6 +163,8 @@ as pSFR_group
 from geoW a
 join P_momPop2 p2
 on p2.msrMarket=a.msrMarket
+join P_momPop p1
+on 1=1
 order by cbsa;
 quit;
 
@@ -296,7 +301,7 @@ data baseRent_med; set baseRent_cbsa(rename=cbsa=indexcode) baseRent_state(renam
 
 proc sql; create table modelinp0b as select distinct a.*, baseRent, c1.hpi_sa_medhP as baseHP,c.*,
 baseRent/e.rentidx_sa*a.rentidx_sa as medRent, em.ln_emp, em.ln_laborforce, geoW, geoW_allRentUnit
-, pSFR_group
+, pSFR_group, psfr_group2
 , case when a.indexcode in &amherstmarket. then 1 else 0 end as MSRMarket
 from allrentIdx a
 join rawRentidx b
@@ -391,17 +396,21 @@ run;
 
 * Historical average for fund line;
 proc means data=modelinp1(where=(qtr>=201101 and qtr<=202103)) noprint nway; class indexcode;
-var mort_share rent_share rent2Own; output out=histmean mean = m_mortshare m_rentShare m_rent2own; run;
+var mort_share rent_share rent2Own LnRentg; output out=histmean mean = m_mortshare m_rentShare m_rent2own m_rentg; run;
 
 proc sql; create table modelinp2 as
-select distinct a.*, h.m_mortshare, h.m_rentShare, h.m_rent2own
+select distinct a.*, h.m_mortshare, h.m_rentShare, h.m_rent2own, h.m_rentg
 from modelinp1 a
 join histmean h
 on a.indexcode= h.indexcode
 order by indexcode, indexmonth; quit;
 
 
-data modelinp2; set modelinp2;  by indexcode indexmonth;
+data modelinp2; set modelinp2(drop=rentidx1);  by indexcode indexmonth;
+retain  Rentidx1 ;  
+if first.indexcode  then Rentidx1=1;
+else Rentidx1=Rentidx1*(exp(m_rentg)); 
+ln_m_Rentidx=log(Rentidx1);
 
 afford_HP = log(Inc*m_mortshare/12/factor)-log(hpi_sa_medhp);
 afford_Rent = log(Inc*m_rentshare/12) - log(baseRent);
@@ -441,7 +450,7 @@ market =  symget(compress("cbsaname"||trim(indexcode)));
 run;
 
 proc sql; create table parm_test_outlier as
-select distinct a.*, b.msrMarket, b.pSFR_group, b.p_SFR
+select distinct a.*, b.msrMarket, b.pSFR_group, b.p_SFR, b.psfr_group2
 from parm_test_outlier a
 join geow b
 on a.indexcode=b.cbsa 
@@ -449,7 +458,7 @@ order by indexcode;
 quit;
 
 proc sql; create table geow_output as
-select distinct a.*, h.m_mortshare, h.m_rentShare, h.m_rent2own,c.outlier, m.baserent, r.p_SFR as  p_SFR_2019
+select distinct a.*, h.m_mortshare, h.m_rentShare, h.m_rent2own, h.m_rentg,c.outlier, m.baserent, r.p_SFR as  p_SFR_2019
 from geow a
 join histmean h
 on a.cbsa= h.indexcode
@@ -466,12 +475,596 @@ quit;
 proc delete data=testbed.rentfc_weight;
 data testbed.rentfc_weight(insertbuff=32000); set geow_output; run;
 
-proc export data=parm_test_outlier outfile="E:\Output\Rent Forecast\simple AR5 parm 1209.csv" dbms=csv replace; run;
-proc export data=geoW_output outfile="E:\Output\Rent Forecast\geoW output.csv" dbms=csv replace; run;
+proc export data=parm_test_outlier outfile="E:\Output\Rent Forecast\simple AR5 parm 0126.csv" dbms=csv replace; run;
+proc export data=geoW_output outfile="E:\Output\Rent Forecast\geoW output 0126.csv" dbms=csv replace; run;
 
 
 data modelinp3; set modelinp2; where indexcode not in (&outlier1.);
 run;
+
+** Fund Line;
+proc sort data=modelinp3; by psfr_group2; run;
+proc reg data=modelinp3(where=(qtr>201100 and qtr<=202103)) outest=parm_fund adjrsq noprint tableout ;  by psfr_Group2;  weight geoW; 
+model ln_Rentidx =ln_m_rentidx  month inc_gini ln_inc afford_rent/selection=stepwise sle=0.001 ;* ln_SFR ln_laborforce  ln_laborForce ln_emp;
+output out=is_fund r=r_fund p=rentidx_fund; run; quit;
+
+** 2nd Stage: AR(5);
+proc sort data=is_fund; by psfr_Group2 indexcode qtr; run;
+data is_fund; set is_fund(where=(rentidx_fund ne .)) ; *intercept=1; by psfr_Group2 indexcode qtr;
+l1_fundidx=lag(rentidx_fund);
+if first.indexcode then l1_fundidx=.;
+rhpits = ln_rentidx_l1-l1_fundidx;
+rhpits_l1 = lag(rhpits);
+if indexcode ne lag(indexcode) then rhpits_l1=.;
+run;
+
+proc sort data=is_fund; by psfr_Group2 indexcode qtr; run;
+proc reg data=is_fund(where=(qtr>201100 and qtr<=202103)) outest=parm_stage2 adjrsq tableout noprint;  by psfr_Group2;
+weight geoW;
+model lnRentg = rhpits  rentg_l1 rentg_l2 rentg_l3 rentg_l4 rentg_l5 /selection=stepwise sle=0.05 /*sle=0.001 sle=0.05*/;
+output out=is_stage2 r=r_stage2 ; run; quit;
+
+** 3rd stage: HPA and other Var;
+proc reg data=is_stage2(where=(qtr>201100 and qtr<=202103)) outest=parm_stage3 adjrsq tableout noprint;   by psfr_Group2;
+weight geoW;
+model r_stage2=hpg_season_last2 unemp_g   chgslope0_1 /selection=stepwise sle=0.05;
+; output out=resid_SFrent r=r_SFRent p=P_rentg; run; quit; 
+
+
+*** Combined R-Square;
+
+proc means data=resid_SFrent noprint nway; by psfr_Group2; var lnRentg;weight geoW; output out=tp_mean mean=avg_rentidx; run;
+proc sql; create table tp_r2 as
+select distinct a.*, b.avg_rentidx 
+from resid_SFrent a
+join tp_mean b
+on a.psfr_group2 = b.psfr_group2;
+quit;
+
+data tp_r2; set tp_r2;
+r_tot = (lnRentg - avg_rentidx)**2;
+r_res = r_SFRent**2;
+run;
+
+
+proc means data=tp_r2(where=(r_res ne .)) noprint nway;  class psfr_Group2; weight geoW; var r_tot r_res; output out=tp_sum sum=; run;
+
+data tp_sum; set tp_sum;
+r2 = 1-r_res/r_tot;
+run;
+
+
+proc sort data=parm_fund; by psfr_group2 _model_ _type_;
+proc sort data=parm_stage2; by psfr_group2 _model_ _type_;
+proc sort data=parm_stage3; by psfr_group2 _model_ _type_;run;
+
+data parm_final; merge 
+parm_fund(in=f0 rename=(intercept=fund_int _rsq_ = fund_r2 _adjRsq_ = fund_adjr2) drop=_depvar_ _rmse_ ln_rentidx _in_ _p_ _edf_ )
+parm_stage2(in=f1 rename=(intercept=stage2_int _rsq_ = stage2_r2 _adjRsq_ = stage2_adjr2) 
+keep = _model_ _type_  rhpits  rentg_l1 rentg_l2 rentg_l3 rentg_l4 rentg_l5 intercept psfr_group2 _rsq_ _adjRsq_) 
+parm_stage3(in=f2 rename=(intercept=stage3_int _rsq_ = stage3_r2 _adjRsq_ = stage3_adjr2) 
+keep = _model_ _type_  hpg_season_last2 unemp_g   chgslope0_1 intercept psfr_group2 _rsq_ _adjRsq_);
+by psfr_group2 _MODEL_ _type_;
+tp_1= rentg_l1; tp_2 = rentg_l2; tp_3=rentg_l3; tp_4=rentg_l4; tp_5=rentg_l5;
+if tp_1=. then tp_1=0;
+if tp_2=. then tp_2=0;
+if tp_3=. then tp_3=0;
+if tp_4=. then tp_4=0;
+if tp_5=. then tp_5=0;
+if _type_='PARMS' then sum_ar = tp_1 + tp_2 + tp_3 + tp_4 + tp_5;
+drop tp_1 tp_2 tp_3 tp_4 tp_5;
+run;
+
+data order;
+input _TYPE_ $ rn;
+datalines;
+PARMS 1
+STDERR 2
+T 3
+PVALUE 4
+L95B 5
+U95B 6
+;
+RUN;
+
+
+
+proc sql; create table parm_final as
+select  a.*, c.r2 as total_r2, b.rn
+from parm_final a
+left join order b
+on a._type_ =b._type_
+join tp_sum c
+on a.psfr_group2 = c.psfr_group2
+;
+quit;
+
+proc sort ; by psfr_group2 _MODEL_ rn; run;
+data parm_final;set parm_final; drop rn; run;
+
+
+data rentParm.finalParam_new; set parm_final; run;
+
+proc export data=parm_final outfile="E:\Output\Rent Forecast\parm 220126.csv" dbms=csv replace; run;
+
+
+data allparm; set  rentParm.finalParam_new(where=(_type_='PARMS'));
+if fund_int=. then fund_int=0;
+if ln_m_rentidx=. then ln_m_rentidx=0;
+if month=. then month=0;
+if inc_gini=. then inc_gini=0;
+if ln_inc=. then ln_inc=0;
+if afford_rent=. then afford_rent=0;
+if stage3_int=. then stage3_int=0;
+if stage2_int=. then stage2_int=0;
+intercept=stage2_int+stage3_int;
+if rhpits=. then rhpits=0;
+if rentg_l1=. then rentg_l1=0;
+if rentg_l2=. then rentg_l2=0;
+if rentg_l3=. then rentg_l3=0;
+if rentg_l4=. then rentg_l4=0;
+if rentg_l5=. then rentg_l5=0;
+if hpg_season_last2=.  then hpg_season_last2=0;
+if unemp_g=.  then unemp_g=0;
+if chgslope0_1=.  then chgslope0_1=0;
+rename 
+ln_m_rentidx = p_m_rentidx month = p_month inc_gini = p_inc_gini ln_inc = p_inc afford_rent = p_afford_rent
+rentg_l1=p_rentg_l1 rentg_l2 = p_rentg_l2 rentg_l3=p_rentg_l3 rentg_l4=p_rentg_l4 rentg_l5 = p_rentg_l5
+rhpits = p_rhpits
+hpg_season_last2 = p_hpg_season_last2
+unemp_g = p_unemp_g
+chgslope0_1 = p_chgSlope0_1;
+drop _type_ total_r2 stage3_int stage2_int fund_r2 fund_adjr2 stage2_r2 stage2_adj_r2 stage3_r2 stage3_adjr2 sum_ar total_r2;
+run;
+
+
+data ln_seasonality; set allrentIdx; by indexcode  qtr; seasonality=log(Rentidx/lag(Rentidx))-log(Rentidx_sa/lag(Rentidx_sa));
+if first.indexcode  then delete; proc sort; by indexcode  DESCENDING qtr;run;
+data ln_seasonality; set ln_seasonality; if indexcode ne lag4(indexcode) ; 
+qtridx=qtr-int(qtr/100)*100; 
+keep indexcode  qtridx seasonality; proc sort nodup; by indexcode   qtridx;run;
+proc sql; create table ln_seasonality as select distinct indexcode ,qtridx,seasonality-sum(seasonality)/4 
+as seasonality from ln_seasonality group by indexcode;run;
+ 
+
+
+** In Sample Test;
+*afford_Rent = log(Inc*m_rentshare/12) - log(baseRent);
+
+
+%macro insampletest(testqtr=);
+DATA insample00; set modelinp2(keep=indexcode qtr month m_rentg lnRentg ln_rentidx baseRent afford_Rent chgslope0_1 pSFR_group2 msrmarket inc ln_inc inc_gini m_rentshare baserent hpg_season_last2 unemp_g);
+outlier=0;
+if indexcode in (&outlier1.) then outlier=1;
+rename lnRentg = lnRentg0;
+run;
+
+proc sql; create table insample00 as
+select distinct a.*
+, b.fund_int, b.p_m_rentidx, b.p_month, b.p_inc_gini, b.p_inc, b.p_afford_rent
+, b.intercept, b.p_rhpits, b.p_rentg_l1, b.p_rentg_l2, b.p_rentg_l3, b.p_rentg_l4, b.p_rentg_l5, b.p_hpg_season_last2, b.p_unemp_g, b.p_chgslope0_1
+from insample00 a
+join allparm b
+on a.pSFR_group2 = b.pSFR_group2 ;
+quit;
+proc sort; by indexcode qtr; run;
+
+data insample01; set insample00; by indexcode qtr;
+retain  Rentidx1 ;  
+if first.indexcode  then Rentidx1=1;
+else Rentidx1=Rentidx1*(exp(m_rentg)); 
+ln_m_Rentidx=log(Rentidx1);
+drop rentidx1;
+run;
+
+/*
+proc export data=insample01 outfile="E:\Output\Rent Forecast\test.csv" dbms=csv replace; run;
+
+l1_fundidx=lag(rentidx_fund);
+if first.indexcode then l1_fundidx=.;
+rhpits = ln_rentidx_l1-l1_fundidx;
+%let testqtr=201201;
+*/
+
+data insampletest_&testqtr.; retain indexcode qtr lnRentg;set insample01(rename=(ln_rentidx=ln_rentidx0)); by indexcode qtr;
+ 
+retain rentg_l1 rentg_l2 rentg_l3 rentg_l4 rentg_l5  lnRentg rentidx_fund l1_fundidx ln_rentidx ln_rentidx_l1;
+
+if first.indexcode  then do;
+rentg_l1 =.;rentg_l2=.; rentg_l3=.; rentg_l4=.; rentg_l5=.; lnRentg=.;l1_fundidx=.;
+ln_rentidx_l1 =.; ln_rentidx=.;
+rentidx_fund=.; l1_fundidx=.;
+
+end;
+*ln_rentidx_l1=ln_rentidx; 
+rentg_l5 = rentg_l4;
+rentg_l4=rentg_l3;
+rentg_l3=rentg_l2;
+rentg_l2=rentg_l1; 
+rentg_l1=lnRentg;
+ln_rentidx_l1=ln_rentidx; 
+l1_fundidx = rentidx_fund;
+*l1_fundidx=rentidx_fund; 
+
+rentidx_fund = fund_int+P_m_rentidx*ln_m_rentidx + p_month*month + p_inc_gini*inc_gini + p_inc* ln_inc + p_afford_rent* afford_rent;
+l1_fundidx = lag(rentidx_fund);
+
+rhpits = ln_rentidx_l1-l1_fundidx;
+
+
+if qtr<&testqtr.  then do;
+lnRentg=lnRentg0; ln_rentidx=ln_rentidx0; 
+
+end; 
+else do;
+
+lnrentg=intercept+ rhpits*P_rhpits + (rentg_l1)*p_rentg_l1+(rentg_l2)*p_rentg_l2+(rentg_l3)*p_rentg_l3+(rentg_l4)*p_rentg_l4+rentg_l5*p_rentg_l5
++ hpg_season_last2 * p_hpg_season_last2
++ unemp_g * p_unemp_g
++ chgSlope0_1 * p_chgSlope0_1;
+
+*if lnRentg0 ne . then lnrentg=lnRentg0; 
+*if ln_rentidx0 ne . then ln_rentidx=ln_rentidx0; 
+ln_rentidx=ln_rentidx_l1+lnrentg;
+
+end;
+startqtr=&testqtr.;
+drop p_: intercept baserent;
+run;
+
+data insampletest_&testqtr.; set insampletest_&testqtr.; by indexcode qtr;
+retain Rentidx Rentidx0;
+if first.indexcode then do;
+Rentidx=1;
+Rentidx0=1;
+end;
+else do;
+Rentidx = Rentidx*exp(lnRentg);
+Rentidx0 = Rentidx0*exp(lnRentg0);
+end;
+run;
+proc sort nodup; by indexcode descending  qtr ;run;
+
+data insampletest_&testqtr.; set insampletest_&testqtr.; by indexcode descending qtr ;
+fc_1qtr = lag(rentidx)/rentidx-1;
+act_1qtr =  lag(rentidx0)/rentidx0-1;
+if indexcode ne lag(indexcode) then do; fc_1qtr=.; act_1qtr=.; end;
+fc_1yr = lag4(rentidx)/rentidx-1;
+act_1yr =  lag4(rentidx0)/rentidx0-1;
+if indexcode ne lag4(indexcode) then do; fc_1yr=.; act_1yr=.; end;
+fc_2yr = lag8(rentidx)/rentidx-1;
+act_2yr =  lag8(rentidx0)/rentidx0-1;
+if indexcode ne lag8(indexcode) then do; fc_2yr=.; act_2yr=.; end;
+fc_3yr = lag12(rentidx)/rentidx-1;
+act_3yr = lag12(rentidx0)/rentidx0-1;
+if indexcode ne lag12(indexcode) then do; fc_3yr=.; act_3yr=.; end;
+run;
+
+proc sort nodup; by indexcode  qtr;run;
+%mend;
+
+proc sql noprint; select distinct qtr into: qtrlist separated by " " from modelinp3 where qtr>=201101 ; quit;
+%put &qtrlist.;
+
+%macro insampletestloop();
+%local i qtr ;
+  %do i=1 %to %sysfunc(countw(&qtrlist.));
+
+   %let qtr = %scan(&qtrlist., &i, %str( ));
+	%put &qtr.;
+	%insampletest(testqtr=&qtr.);
+  %end;
+%mend;
+%insampletestloop();
+
+data insamplesummary; set insampletest_:;
+if qtr=startqtr;
+act_2yr = (1+act_2yr)**(1/2)-1;
+act_3yr = (1+act_3yr)**(1/3)-1;
+fc_2yr = (1+fc_2yr)**(1/2)-1;
+fc_3yr = (1+fc_3yr)**(1/3)-1;
+err_1qtr = act_1qtr-fc_1qtr;
+err_1yr = act_1yr - fc_1yr;
+err_2yr = act_2yr - fc_2yr;
+err_3yr = act_3yr - fc_3yr;
+abs_err_1qtr = abs(err_1qtr);
+abs_err_1yr =abs(err_1yr);
+abs_err_2yr = abs(err_2yr);
+abs_err_3yr =abs(err_3yr);
+keep indexcode outlier pSFR_group2 msrmarket qtr fc_: act_: err_: abs_err_:;
+run;
+		
+proc means data=insamplesummary noprint nway; where outlier=0; var fc_: act_: err_: abs_err_:; class pSFR_group2; output out=nonOutlier_insample mean=; run;
+proc means data=insamplesummary noprint nway; where outlier=1; var fc_: act_: err_: abs_err_:; class MSRMarket ; output out=Outlier_insample mean=; run;
+
+proc means data=insamplesummary noprint nway; where  qtr>=202003; var fc_1qtr fc_1yr act_1qtr act_1yr err_1qtr err_1yr abs_err_1qtr abs_err_1yr;
+class indexcode; output out=insample_recent mean=; run;
+
+data insample_recent; set insample_recent; 
+market = symget(compress("cbsaName"||trim(indexcode)));
+outlier=0; msrMarket=0;
+if indexcode in (&outlier1.) then outlier=1;
+if indexcode in (&amherstmarket.) then msrMarket=1;
+run;
+
+data insample_all;retain outlier msrMarket pSFR_group2 _freq_ fc_1qtr act_1qtr err_1qtr abs_err_1qtr fc_1yr act_1yr err_1yr abs_err_1yr
+fc_2yr act_2yr err_2yr abs_err_2yr fc_3yr act_3yr err_3yr abs_err_3yr;
+
+set nonOutlier_insample(in=f1) Outlier_insample(in=f2);
+if f1 then outlier=0;
+if f2 then outlier=1;
+run;
+
+
+proc export data=inSample_recent outfile="E:\Output\Rent Forecast\Insample Recent Month 0126.csv" dbms=csv replace; run;
+
+proc export data=inSample_all outfile="E:\Output\Rent Forecast\Insample all by market group 0126.csv" dbms=csv replace; run;
+
+** Test Forecast;
+
+data ln_seasonality; set allrentIdx; by indexcode  qtr; seasonality=log(Rentidx/lag(Rentidx))-log(Rentidx_sa/lag(Rentidx_sa));
+if first.indexcode  then delete; proc sort; by indexcode  DESCENDING qtr;run;
+data ln_seasonality; set ln_seasonality; if indexcode ne lag4(indexcode) ; 
+qtridx=qtr-int(qtr/100)*100; 
+keep indexcode  qtridx seasonality; proc sort nodup; by indexcode   qtridx;run;
+proc sql; create table ln_seasonality as select distinct indexcode ,qtridx,seasonality-sum(seasonality)/4 
+as seasonality from ln_seasonality group by indexcode;run;
+ 
+
+
+proc sql; create table fc as select distinct a.*, baseRent, m_rentshare, m_rentg
+, pSFR_group
+, pSFR_group2
+, msrmarket, outlier
+from allrentIdx a
+join geoW_output w
+on a.indexcode=w.cbsa
+
+where a.qtr>=200001
+and a.indexcode in (select indexcode from HP); ;quit;
+
+
+data fc; set fc; by indexcode  indexmonth; retain  Rentidx1 m_rentidx;  
+if first.indexcode  then do; Rentidx1=1; m_rentidx=1; end;
+else do; Rentidx1=Rentidx1*(exp(LnRentg)); m_rentidx = m_rentidx*(exp(m_rentg)); end;
+ln_Rentidx=log(Rentidx1);
+ln_m_rentidx= log(m_rentidx);
+
+if abs(LnRentg)>.1 and qtr<202001 then LnRentg=.;
+if abs(lnRentg)>.25 then lnrentg=.;
+
+
+rentg_l1=lag(LnRentg); if first.indexcode then rentg_l1=.;
+rentg_l2=lag(rentg_l1); if indexcode ne lag2(indexcode) then rentg_l2=.;
+rentg_l3=lag(rentg_l2); if indexcode ne lag3(indexcode) then rentg_l3=.;
+rentg_l4=lag(rentg_l3); if indexcode  ne lag4(indexcode) then rentg_l4=.;
+rentg_l5=lag(rentg_l4); if indexcode  ne lag5(indexcode) then rentg_l5=.;
+
+run;
+
+data cbsa; set fc; keep indexcode pSFR_group2 baserent m_rentshare m_rentg; proc sort nodup; by indexcode ;run;
+
+%let startsim=1; %let endsim=10;
+
+
+%macro loopSim(startsim=,endsim=);
+%put &startsim;
+data simHistHPA; set HP; if qtr>=201600; do simid=&startsim to &endsim; output; end; 
+keep qtr hpg_season indexcode simid unemp; proc sort nodup; by simid indexcode qtr; run;
+
+data simHistHPA; set simHistHPA; ; by simid indexcode qtr;
+hpg_season_l1=lag(hpg_season); 
+unemp_g= unemp - lag(unemp);
+if  first.indexcode then do; hpg_season_l1=.; unemp_g=.; end;
+hpg_season_last2 = hpg_season+hpg_season_l1;
+run;
+
+data SimHPI; set  simHPI.FIXEDSIM&startsim-simHPI.FIXEDSIM&endsim;*set  simHPI.AllSim_Slope ; *simhpi.hpishock; by path_num cbsa_Code qtr;
+hpg_season=ln_hpi_season-lag(ln_hpi_season);
+unemp_g = unemp - lag(unemp);
+if first.cbsa_code  then do;  hpg_season=.; unemp_g=.; end;
+hpg_season_l1=lag(hpg_season);
+if first.cbsa_Code then hpg_season_l1=.;
+hpg_season_last2 = hpg_season+hpg_season_l1;
+indexcode=put(cbsa_Code,$5.); simid=path_num;drop cbsa_Code  path_num; 
+run;
+
+data qtr; set cbsa; do simid=&startsim to &endsim; do year=2018 to int(&fcqtrStart/100)+10;
+do qidx=1 to 4; if &fcqtrStart-200<=year*100+qidx<=&fcqtrStart+30000 then do; qtr=year*100+qidx; output; end; end; end;
+end; keep indexcode  qtr simid; run;
+
+data errMat2; set errMat_RentFC(where=(&startsim<=simid<=&endsim));by indexcode simid qtridx; retain qtr; if first.simid then qtr=&fcqtrStart; 
+else do; 
+if mod(qtr,100)=4 then qtr=qtr+100-3; else qtr+1;
+end; drop qtridx; run;
+data qtr; merge qtr cbsa(keep=indexcode baserent m_rentshare pSFR_group2 m_rentg); by indexcode ;run;
+proc sort data=qtr nodup; by simid qtr; run;
+proc sort data=rate_frm2; by path_num qtr; run;
+
+data qtr; merge qtr(in=f1) rate_frm2(where=(&startsim<=simid<=&endsim) in=f2 rename=path_num=simid keep=path_num qtr
+cmt_10yr cmt_10yr_g slope slope_l1 refi_rate cmt_2yr cmt_10yr libor_3m chgslope0_1) ; by simid qtr; if f1 and f2; run;
+
+proc sort data=qtr; by simid indexcode qtr ;
+proc sort data=errMat2; by simid indexcode qtr ; 
+proc sort data=SimHPI; by simid indexcode qtr ; run;
+
+*afford_Rent = log(Inc*m_rentshare/12) - log(baseRent);
+
+data qtr1; merge qtr(in=f1) SimHPI(in=f2 keep=simid  unemp  qtr indexcode unemp unemp_g  Inc_p50 inc_mean hpg_season_last2
+ rename=(hpg_season_last2=hpg_season_last2_sim unemp_g= unemp_g_sim)) simHistHPA(drop=hpg_season hpg_season_l1) errMat2; *;
+by simid indexcode qtr ; if f1 and f2;
+if hpg_season_last2=. then hpg_season_last2=hpg_season_last2_sim; 
+if unemp_g=. then unemp_g=unemp_g_sim;
+drop hpg_season_last2_sim unemp_g_sim;
+run;
+proc sort nodup; by indexcode;run;
+
+
+proc sql; create table qtr2 as
+select distinct a.indexcode, a.pSFR_group2, a.simid, a.qtr, a.chgslope0_1, unemp, unemp_g, inc_p50, inc_mean, hpg_season_last2, resid_rent, a.baseRent, a.m_rentshare, m_rentg
+, b.fund_int, b.p_m_rentidx, b.p_month, b.p_inc_gini, b.p_inc, b.p_afford_rent
+, b.intercept, b.p_rhpits, b.p_rentg_l1, b.p_rentg_l2, b.p_rentg_l3, b.p_rentg_l4, b.p_rentg_l5, b.p_hpg_season_last2, b.p_unemp_g, b.p_chgslope0_1
+from qtr1 a
+join allparm b
+on a.pSFR_group2 = b.pSFR_group2 ;
+quit;
+
+
+data fc2; set fc(keep=  indexcode qtr psfr_group2  LnRentg ln_m_rentidx  ln_rentidx  m_rentshare baseRent m_rentg
+rename=(LNrentg=LNrentg0  ln_rentidx=ln_rentidx0 ln_m_rentidx=ln_m_rentidx0));
+*if indexcode not in (&outlier1.) ;
+if qtr>=&fcqtrStart-300;do simid=&startsim to &endsim; output; end;
+proc sort nodup; by simid indexcode qtr;run;
+proc sort data=qtr2; by simid indexcode qtr;run;
+
+data fc3; retain indexcode simid qtr lnRentg ; merge fc2 qtr2; by simid indexcode qtr;
+retain  rentg_l1 rentg_l2 rentg_l3 rentg_l4 rentg_l5  lnRentg rentidx_fund l1_fundidx ln_rentidx ln_rentidx_l1 ln_m_rentidx;
+ 
+if resid_rent=. then resid_rent=0; 
+afford_Rent = log(Inc_p50*m_rentshare/12) - log(baseRent);
+inc_gini = log(Inc_mean/inc_p50);
+if first.indexcode then ln_m_rentidx = ln_m_rentidx0;
+else ln_m_rentidx = ln_m_rentidx+m_rentg;
+
+month = (int(qtr/100)-2000)*4 + mod(qtr,100);
+ln_inc = log(inc_p50);
+
+if first.indexcode  then do;
+rentg_l1 =.;rentg_l2=.; rentg_l3=.; rentg_l4=.; rentg_l5=.; lnRentg=.;l1_fundidx=.;
+ln_rentidx_l1 =.; ln_rentidx=.;
+rentidx_fund=.; l1_fundidx=.;
+
+end;
+
+rentg_l5 = rentg_l4;
+rentg_l4=rentg_l3;
+rentg_l3=rentg_l2;
+rentg_l2=rentg_l1; 
+rentg_l1=lnRentg;
+ln_rentidx_l1=ln_rentidx; 
+l1_fundidx = rentidx_fund;
+
+
+rentidx_fund = fund_int+P_m_rentidx*ln_m_rentidx + p_month*month + p_inc_gini*inc_gini + p_inc* ln_inc + p_afford_rent* afford_rent;
+l1_fundidx = lag(rentidx_fund);
+
+rhpits = ln_rentidx_l1-l1_fundidx;
+
+if qtr<&fcqtrStart  then do;
+lnRentg=lnRentg0; ln_rentidx=ln_rentidx0; 
+
+end; 
+else do;
+
+lnrentg=intercept+ rhpits*P_rhpits + (rentg_l1)*p_rentg_l1+(rentg_l2)*p_rentg_l2+(rentg_l3)*p_rentg_l3+(rentg_l4)*p_rentg_l4+rentg_l5*p_rentg_l5
++ hpg_season_last2 * p_hpg_season_last2
++ unemp_g * p_unemp_g
++ chgSlope0_1 * p_chgSlope0_1+resid_rent;
+
+
+if lnRentg0 ne . then lnRentg=lnRentg0;
+if ln_rentidx0 ne . then ln_rentidx=ln_rentidx0;  
+
+*if lnRentg>=0.06 then lnRentg=0.06;
+
+ln_rentidx=ln_rentidx_l1+lnrentg;
+
+if lnRentg0 ne . then lnRentg=lnRentg0;
+if ln_rentidx0 ne . then ln_rentidx=ln_rentidx0; 
+end;
+qtridx=mod(qtr,100);
+
+drop P_:;
+keep qtr qtridx indexcode simid  ln_rentidx lnRentg rentidx_fund  unemp
+Inc_p50 hpg_season_last2 l1_fundidx;
+run;
+
+proc sort data=fc3; by indexcode  qtridx; 
+data fc4; merge fc3(in=f1) ln_seasonality ; by indexcode  qtridx;
+ln_fundg = rentidx_fund - l1_fundidx; 
+rentg=exp(lnrentg+seasonality)-1; 
+rentg_fund = exp(ln_fundg+seasonality)-1;
+if f1; if rentg=. then rentg=lnrentg; 
+if qtr>=&fcqtrstart; if rentg ne . ;
+run;
+
+proc sort nodup; by simid indexcode qtr;run;
+
+data fc5; set fc4(drop=rentidx_fund); by simid indexcode qtr; 
+retain rentidx rentidx_fund;
+if first.indexcode then do; rentidx=1; rentidx_fund=1; end;
+else do; rentidx=rentidx*(1+rentg); rentidx_fund = rentidx_fund*(1+rentg_fund); end;
+keep qtr  indexcode simid   rentidx rentidx_fund Inc_p50 rentg rentg_fund unemp;
+run;
+data AllSim; set AllSim fc5; if simid ne .; run;
+%mend;
+
+
+data ALlSim;run;
+%loopSim(startsim=0, endsim=100);
+%loopSim(startsim=101, endsim=200);
+%loopSim(startsim=201, endsim=300);
+%loopSim(startsim=301, endsim=400);
+%loopSim(startsim=401, endsim=500);
+%loopSim(startsim=501, endsim=600);
+%loopSim(startsim=601, endsim=700);
+%loopSim(startsim=701, endsim=800);
+%loopSim(startsim=801, endsim=900);
+%loopSim(startsim=901, endsim=1000);
+proc sort data=allSim; by indexcode;run;
+
+proc means data=allsim noprint nway; class indexcode qtr; var rentidx rentidx_fund; output out=meanpath mean=  ; run;
+
+proc sort data=meanpath; by indexcode descending qtr; run;
+
+data summary; set meanpath; by indexcode descending qtr;
+fc_1qtr = lag(rentidx)/rentidx-1;
+fc_1yr = lag4(rentidx)/rentidx-1;
+fc_3yr = (lag12(rentidx)/rentidx)**(1/3)-1;
+fc_5yr = (lag20(rentidx)/rentidx)**(1/5)-1;
+if qtr=202104;
+run;
+
+data meanPath_prod; set irs.sf_rentIdx_month_dt; if month(indexmonth) in(3,6,9,12);qtr=year(indexmonth)*100+qtr(indexmonth); *if qtr>=202104; run;
+proc sort data=meanPath_prod; by indexcode descending qtr; run;
+
+data summary_prod; set meanpath_prod; by indexcode descending qtr;
+fc_1qtr_prod = lag(index)/index-1;
+fc_1yr_prod = lag4(index)/index-1;
+fc_3yr_prod = (lag12(index)/index)**(1/3)-1;
+fc_5yr_prod = (lag20(index)/index)**(1/5)-1;
+if qtr=202104;
+run;
+
+proc sort data=meanpath_v1; by indexcode descending qtr; run;
+
+data summary_v1; set meanpath_v1; by indexcode descending qtr;
+fc_1qtr_v1 = lag(rentidx)/rentidx-1;
+fc_1yr_v1 = lag4(rentidx)/rentidx-1;
+fc_3yr_v1 = (lag12(rentidx)/rentidx)**(1/3)-1;
+fc_5yr_v1 = (lag20(rentidx)/rentidx)**(1/5)-1;
+if qtr=202104;
+run;
+
+
+proc sort data=meanpath_prod; by indexcode qtr; run;
+data hist; set  meanpath_prod; by indexcode qtr;
+hist_1qtr= index/lag(index)-1;
+hist_1yr = index/lag4(index)-1;
+hist_3yr = (index/lag12(index))**(1/3)-1;
+hist_5yr = (index/lag20(index))**(1/5)-1;
+if qtr=202104;
+run;
+
+data compare; retain indexcode market msrMarket qtr indexmonth  hist_: fc_1qtr: fc_1yr: fc_3yr: fc_5yr:;
+merge hist(in=f1) summary_prod(in=f2) summary(in=f3) summary_v1(in=f4); by indexcode qtr; if f1 and f2 and f3 and f4;
+market = symget(compress("cbsaname"||trim(indexcode)));
+msrmarket=0;
+if indexcode in (&amherstmarket.) then msrmarket=1;
+drop _: rentidx rentidx_fund;
+run;
+
+proc export data=compare outfile="E:\Output\Rent Forecast\compare between version.csv" dbms=csv replace; run;
 
 ** Try parameter with constraints;
 data parmmap;

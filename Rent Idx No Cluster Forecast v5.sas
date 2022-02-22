@@ -5,18 +5,18 @@ LIBNAME wlres ODBC DSN='Apollo_3Party' schema=dbo;  LIBNAME testbed ODBC DSN='mo
 LIBNAME thirdP ODBC DSN='Apollo_3Party' schema=dbo;
 LIBNAME ahpi ODBC DSN='amhersthpi' schema=dbo;
 LIBNAME cre ODBC DSN='cre' schema=dbo;
-libname CreMacr '\\tvodev\T$\Thu Output\CRE Macro';
+libname CreMacr '\\tvodevw10\T$\Thu Output\CRE Macro';
 LIBNAME krlive ODBC DSN='krlive' schema=dbo; 	
-libname output '\\tvodev\T$\Thu Output\CMBS\';
-libname parm '\\tvodev\T$\Thu Output\CMBS\Macro Proj\parameters';
-libname oldparm '\\tvodev\T$\Thu Output\CMBS\Macro Proj\parameters2';
+libname output '\\tvodevw10\T$\Thu Output\CMBS\';
+libname parm '\\tvodevw10\T$\Thu Output\CMBS\Macro Proj\parameters';
+libname oldparm '\\tvodevw10\T$\Thu Output\CMBS\Macro Proj\parameters2';
 
-libname simoutp '\\tvodev\T$\Thu Output\CMBS\Macro Proj\sim output';
-libname macro '\\tvodev\T$\Thu Output\CMBS';
+libname simoutp '\\tvodevw10\T$\Thu Output\CMBS\Macro Proj\sim output';
+libname macro '\\tvodevw10\T$\Thu Output\CMBS';
 
 libname IR ODBC DSN='InterestRates' schema=dbo;
-%let cDrive=\\tvodev\C$\;
-%let tDrive=\\tvodev\T$\;
+%let cDrive=\\tvodevw10\C$\;
+%let tDrive=\\tvodevw10\T$\;
 %include "&cDrive.\SAS Codes\cre-macro-projections\CMBS macrovariable model macros v2.12.sas";
 %include "&cDrive.\SAS Codes\cre-macro-projections\macros to support CMBS model 1.sas";
 
@@ -27,7 +27,7 @@ libname IR ODBC DSN='InterestRates' schema=dbo;
 %let startSim=1;%let endSim=100;%let nPath=100; 
 %let exclude=if not (metrocode='MUNC' and asgproptype='IN') and not (metrocode='YAKI' and asgproptype='IN') and not (metrocode='VINE' and asgproptype='RT')
 and not(metrocode ='FOAR' and asgproptype='RT') and not(metrocode='LAFA') and not (metrocode='FOND')  and not (metrocode='DAVE') and not (metrocode='MOBI') ;
-%let lt_input=\\tvodev\T$\Thu Output\HPI\HPI Calculation\v2.0\SAS Input\Long term HPI inputs;
+%let lt_input=\\tvodevw10\T$\Thu Output\HPI\HPI Calculation\v2.0\SAS Input\Long term HPI inputs;
 %let maxid=100;%let maxqtr=42; %let fcqtr=202101; %let maxfc=42; %let fcqtr_l1=202004;
 
 %let R_EXEC_COMMAND = &cDrive.\Program Files\R\R-3.4.1\bin\x64\Rscript.exe;
@@ -40,7 +40,7 @@ LIBNAME devVo ODBC DSN='devVo' schema=dbo;
 
 %let lb=-0.035; %let ub=0.35;
 %let shock=; %let nametbl=;
-%let tdrive=\\tvodev.CORP.amherst.com\T$\;
+%let tdrive=\\tvodevw10.CORP.amherst.com\T$\;
 %let lt_out=&tDrive.\Thu Output\HPI\HPI Forecast\v2.1;
 
 
@@ -54,7 +54,7 @@ LIBNAME irs ODBC DSN='irs' schema=dbo;
 LIBNAME thirdp ODBC DSN='thirdpartydata' schema=dbo;
 LIBNAME devvo ODBC DSN='devvo' schema=dbo;
 LIBNAME testbed ODBC DSN='modeltestbed' schema=dbo;
-LIBNAME parmSF '\\tvodev\T$\\Thu Output\SF REnt'; 
+LIBNAME parmSF '\\tvodevw10\T$\\Thu Output\SF REnt'; 
 
 libname SimHPI "&lt_out.\parameters"; 
 %LoadIn_Hist_IR_Format;
@@ -84,7 +84,7 @@ data rate_frm_mo; format month BEST12.; run;
 %add_fredRent(inp=rate_frm_mo,sm_url=http://research.stlouisfed.org/fred2/data/MORTGAGE30US.txt, sm_var=refi_rate, sm_firstobs=16);
 %add_fredRent(inp=rate_frm_mo,sm_url=http://research.stlouisfed.org/fred2/data/GS2.txt, sm_var=cmt_2yr, sm_firstobs=16);
 %add_fredRent(inp=rate_frm_mo,sm_url=http://research.stlouisfed.org/fred2/data/GS10.txt, sm_var=cmt_10yr, sm_firstobs=16);
-%add_fredRent(inp=rate_frm_mo,sm_url=http://research.stlouisfed.org/fred2/data/USD3MTD156N.txt, sm_var=libor_3m, sm_firstobs=33);
+*%add_fredRent(inp=rate_frm_mo,sm_url=http://research.stlouisfed.org/fred2/data/USD3MTD156N.txt, sm_var=libor_3m, sm_firstobs=33);
 proc export data=rate_frm_mo outfile="&lt_out.\monthly frm30 & swap2-10 rate since 199001.csv" replace; run;
 %end;
 
@@ -221,13 +221,14 @@ proc sql; create table StateDerivedRent as select distinct a.cbsa_div as geograp
 sum(a.PopPct*b.rent_g)/sum(a.PopPct) as Staterent_g from CBSAPOPDist a join rentidx2 b on a.state=b.geographycode 
  group by a.cbsa_div,qtr order by cbsa_div,  qtr desc;run;
 
-
+%put &rentidxTableName.;
 /*
  data parmrent; set irs.QtrlyRentIdx ( rename=(index=rentidx0 date=qtr )); geographycode=cbsa_div; keep geographycode qtr rentidx0;  run;
 proc sort nodup; by   geographycode descending qtr; run;
  */
-data rawRentidxOrg; set  &rentidxTableName ; date=year(monthfmt)*100+month(monthfmt); if date=. then date=substr(monthfmt,1,4)*100+substr(monthfmt,6,2); 
-drop monthfmt; if pricetier='agg'; drop index_SF index_TH cbsa; if city20=0 or city20=.;
+data rawRentidxOrg; set  &rentidxTableName ; date=year(monthfmt)*100+month(monthfmt);* if date=. then date=substr(monthfmt,1,4)*100+substr(monthfmt,6,2); 
+drop monthfmt; *if pricetier='agg'; *drop index_SF index_TH cbsa;* if city20=0 or city20=.;
+keep indexcode date index;
 proc sort nodup; by indexcode date; run;
 data rawRentidxOrg; set rawRentidxOrg; by indexcode date; rentg= index/lag(index)-1; if first.indexcode then rentg=.; run;
 data rawrentidx0; set rawRentidxOrg; by indexcode date;  if last.indexcode; keep indexcode pricetier  date rentg; run;
@@ -281,7 +282,7 @@ data HP; set irs.hpi_basefile; indexcode=put(cbsa_Code,$5.); drop cbsa_code; if 
 
 proc SQL; connect to odbc(DSN='thirdpartydata'); create table baseRent as select 
 * from connection to odbc(select a.*,b.state,isnull(cbsa_div,cbsa) as cbsa 
-from modeltestbed..SFR_Rent_CleanUp_new_final a join amhersthpi..hpi_taxroll_vw b
+from modeltestbed.dbo.SFR_Rent_CleanUp_new_final a join amhersthpi..hpi_taxroll_vw b
 on a.asg_propid=b.asg_propid and b.prop_type ='SF' 
 and 2015=year(lease_enddate) and month(lease_enddate)<=3;); 
 disconnect from odbc;quit;
@@ -368,7 +369,7 @@ data modelinp1; merge modelinp1 Ncbsa; by indexcode ; array Z(*) Z_1-Z_&Ncbsa;
 do i=1 to dim(Z); if i=Ncbsa then Z(i)=1; else Z(i)=0; end; run;
 
 
-proc import datafile="\\tvodev.CORP.amherst.com\T$\\Thu Output\HPI\HPI Forecast\sp500.csv" out=tv_sp500      dbms=csv      replace; datarow=2;  getnames=yes;   run;
+proc import datafile="\\tvodevw10.CORP.amherst.com\T$\\Thu Output\HPI\HPI Forecast\sp500.csv" out=tv_sp500      dbms=csv      replace; datarow=2;  getnames=yes;   run;
 proc sort nodup; by date ;run;
 %add_fredRent(inp=sp500,sm_url=http://research.stlouisfed.org/fred2/data/sp500.txt, sm_var=sp500, sm_firstobs=16);
 proc sort data =tv_sp500; by date;
@@ -925,6 +926,7 @@ run;
 data AllSim; set AllSim fc5; if simid ne .; run;
 %mend;
 data ALlSim;run;
+/* %let startsim=0;%let  endsim=100; */
 %loopSim(startsim=0, endsim=100);
 %loopSim(startsim=101, endsim=200);
 %loopSim(startsim=201, endsim=300);
