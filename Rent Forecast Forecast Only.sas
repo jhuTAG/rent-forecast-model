@@ -746,7 +746,7 @@ data ALlSim_v1;run;
 %loopSim(startsim=801, endsim=900);
 %loopSim(startsim=901, endsim=1000);
 proc sort data=ALlSim_v1; by indexcode;run;
-proc means data=ALlSim_v1 noprint nway; class indexcode qtr; var rentidx; output out=meanpath_v1 mean=  /autoname; run;
+proc means data=ALlSim_v1 noprint nway; class indexcode qtr; var rentidx; output out=meanpath_v1 mean= ; run;
 
 
 data allsim_ar5; set allsim; run;

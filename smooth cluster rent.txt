@@ -1,0 +1,21 @@
+
+setwd("//tvodevw10.corp.amherst.com/T$/Thu output/misc requests")
+
+inp<<- read.csv("rentcluster.csv",sep  =  ",", header = T)
+
+endrow=nrow(inp)
+out<-numeric(0)
+
+while (endrow>0){
+  name=as.character(inp$indexcode[[1]])
+  mat=inp[inp$indexcode==name,]
+  s=smooth.spline(mat$Rentg[1:length(mat$Rentg)],spar=0.4) 
+  out<-rbind(out,cbind(name,mat$qtr,s[[2]]))
+  if ((nrow(mat)+1)<nrow(inp) ){
+    inp=inp[inp$indexcode!=name,]
+    endrow=nrow(inp)} 	else {endrow=0}
+}
+colnames(out) <- c("region","qtr","rentSmooth")
+title<-paste("rentcluster_Smoothed.csv",sep="") 
+write.csv(out, title,row.names = F) 
+

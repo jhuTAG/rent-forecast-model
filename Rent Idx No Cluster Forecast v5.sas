@@ -1,3 +1,7 @@
+
+proc sql; create table allparm as select * from  parmSF.parmSFRent, parmSF.parmC, parmSF.parmV, parmSF.parmsp;run;
+
+data allparm;set allparm;  array parm(*) p:;  do i=1 to dim(parm); if parm(i)=. then parm(i)=0; end; drop i;run;
 %macro RentFC();
 %let prev_date=19971201;	%let prev_mon=199712; %let Nsim=2000;
 LIBNAME cmbs ODBC DSN='Apollo_CMBS' schema=dbo; 
@@ -368,9 +372,14 @@ proc sql noprint; select max(Ncbsa) into: Ncbsa from Ncbsa;
 data modelinp1; merge modelinp1 Ncbsa; by indexcode ; array Z(*) Z_1-Z_&Ncbsa; 
 do i=1 to dim(Z); if i=Ncbsa then Z(i)=1; else Z(i)=0; end; run;
 
-
+/*
 proc import datafile="\\tvodevw10.CORP.amherst.com\T$\\Thu Output\HPI\HPI Forecast\sp500.csv" out=tv_sp500      dbms=csv      replace; datarow=2;  getnames=yes;   run;
 proc sort nodup; by date ;run;
+proc delete data=irs.tv_sp500; run;
+data irs.tv_sp500; set tv_sp500; run;
+*/
+
+data tv_sp500; set irs.tv_sp500; run;
 %add_fredRent(inp=sp500,sm_url=http://research.stlouisfed.org/fred2/data/sp500.txt, sm_var=sp500, sm_firstobs=16);
 proc sort data =tv_sp500; by date;
 proc sort data =sp500; by month; run;
@@ -600,9 +609,17 @@ keep indexcode psf_:; run; proc print data=parmSF.parmV;run;
 data parmSF.parmsp; set parmSP(keep=_TYPE_ intercept ust_g_l1 us_unemp_g rename=(intercept=psp_intercept ust_g_l1=psp_ust_g_l1 us_unemp_g=psp_us_unemp_g)
 where=(_TYPE_='PARMS'));drop _TYPE_; run;
 */
+
+/*
 proc sql; create table allparm as select * from  parmSF.parmSFRent, parmSF.parmC, parmSF.parmV, parmSF.parmsp;run;
 
 data allparm;set allparm;  array parm(*) p:;  do i=1 to dim(parm); if parm(i)=. then parm(i)=0; end; drop i;run;
+
+proc delete data=irs.rentforecast_parm;
+data irs.rentforecast_parm; set allparm; run;
+*/
+
+data allparm; set  irs.rentforecast_parm;  run;
 
 *%genResid;
 *%getRandomErrAll;
@@ -753,9 +770,11 @@ data _null_; vol=0.1497/2; call symput("vol",vol);run;
 
 data fcSP ; set tv_sp500(where=(qtr>0 )); do simid=0 to 1000; output; end;
 proc sort nodup; by simid qtr; run;
-
-data parmSP_Sim; set parmSF.parmsp; do path_num=0 to 1000; output; end; run; 
-data simHPI_US; set simHPI.FIXEDSIM0-simHPI.FIXEDSIM1000; keep qtr path_num us_unemp; if qtr>0 and us_unemp>0; run; proc sort nodup; by path_num qtr us_unemp;run;
+/*
+data irs.sp500forecast_parm; set parmSF.parmSP; run;
+*/
+data parmSP_Sim; set  irs.sp500forecast_parm; do path_num=0 to 1000; output; end; run; 
+data simHPI_US; set irs.simHPIpath;*simHPI.FIXEDSIM0-simHPI.FIXEDSIM1000; keep qtr path_num us_unemp; if qtr>0 and us_unemp>0; run; proc sort nodup; by path_num qtr us_unemp;run;
 proc sql; create table simHPI_US1  as select * from simHPI_US a join parmSP_Sim  b on a.path_num=b.path_num;run;
 proc sort nodup; by path_num qtr;run;
 
@@ -803,7 +822,9 @@ data simHistHPA; set HP; if qtr>=201600; do simid=&startsim to &endsim; output; 
 keep qtr hpg_season indexcode simid; proc sort nodup; by simid indexcode qtr; run;
 
 data simHistHPA; set simHistHPA; ; by simid indexcode qtr; hpg_season_l1=lag(hpg_season);  if  first.indexcode then hpg_season_l1=.;  run;
-data SimHPI; set  simHPI.FIXEDSIM&startsim-simHPI.FIXEDSIM&endsim;*set  simHPI.AllSim_Slope ; *simhpi.hpishock; by path_num cbsa_Code qtr;
+data SimHPI; set  irs.simHPIpath(where=(PATH_NUm>=&startsim. and path_num<=&endsim.));
+*simHPI.FIXEDSIM&startsim-simHPI.FIXEDSIM&endsim;*set  simHPI.AllSim_Slope ; *simhpi.hpishock;
+by path_num cbsa_Code qtr;
 incg=log(inc_p50/lag(inc_p50));
 hpg_season=ln_hpi_season-lag(ln_hpi_season);
 if first.cbsa_code  then do; incg=.; hpg_season=.; end;
@@ -938,9 +959,11 @@ data ALlSim;run;
 %loopSim(startsim=801, endsim=900);
 %loopSim(startsim=901, endsim=1000);
 proc sort data=allSim; by indexcode;run;
-
-
-data housing; set simhpi.housing; indexcode=put(cbsa_code,$5.); keep indexcode housing;run;
+/*
+proc delete data =irs.housing;
+data irs.housing; set simhpi.housing; run;
+*/
+data housing; set irs.housing; indexcode=put(cbsa_code,$5.); keep indexcode housing;run;
 LIBNAME irs ODBC DSN='irs' schema=dbo;
 
 proc sort data=allsim; by indexcode;
@@ -1088,11 +1111,16 @@ quit;
 
 proc delete data=testbed.bak_sf_rentIdx_month_dt_&enddate.;
 data testbed.bak_sf_rentIdx_month_dt_&enddate.(insertbuff=30000); set irs.sf_rentIdx_month_dt;run;
+** upload to load table first;
 
+proc delete data=testbed.load_sf_rentIdx_month_dt;
+data  testbed.load_sf_rentIdx_month_dt(insertbuff=30000); set sf_rentIdx_month_dt; cluster='agg'; 
+indexmonth=input(put(date*100+1,8.),YYMMDD10.);FORMAT indexmonth date9.; drop date; run;
+/*
 proc delete data=irs.sf_rentIdx_month_dt;
 data irs.sf_rentIdx_month_dt (insertbuff=30000); set sf_rentIdx_month_dt; cluster='agg'; 
 indexmonth=input(put(date*100+1,8.),YYMMDD10.);FORMAT indexmonth date9.; drop date; run;
-
+*/
  /*
 
  *Scenario
