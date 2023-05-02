@@ -9,6 +9,141 @@ The rent projection code is in C:\SAS Codes\rent-forecast-model\Test\Rent Idx No
 
 
 
+**************************NEED TO UPDATE EVERY MONTH***************************
+*******************************************************************************
+*******************************************************************************
+*1. Go to \\tvodev.CORP.amherst.com\T$\Thu Output\HPI\SAS Input\Long term HPI inputs\, change the name of Basket_2015-10-11_21_23.DAT to previousmonth_Basket_2015-10-11_21_23.DAT
+
+2. Download: http://www.economy.com/getfile?app=schedule&q=65BB84FA-C7FA-4408-B912-2D9E64C4B62E&f=Basket_2015-10-11_21_23.DAT
+to \\tvodev.CORP.amherst.com\T$\Thu Output\HPI\SAS Input\Long term HPI inputs\;
+*******************************************************************************
+*******************************************************************************
+******************************************************;************************;
+
+
+proc datasets library=work kill nolist;
+quit;
+
+%let rentidxTableName=irs.sf_rentIdx_monthly ;
+*%let rentidxTableName=testbed.sf_rentIdx_monthly ;
+*%let rentidxTableName=devhu.sf_rentidx_monthly2 ;
+*
+%let rentidxTableName=irs.sf_rentIdx_monthly_v2 ;
+%macro initsetup();
+
+%global today sysmonth sysyear curmon enddate curindexdate nUnit lt_endq lt_curmon lt_endq endmo enddate_fmt nQtr maxyear nyearUnit Histenddate;
+
+
+data _NULL_ ; set irs.TV_MLSlisting_CleanedUp(obs=1 where=(asgtimestamp ne .)); call symput ("today", datepart(asgtimestamp));
+; run;
+%let today=%eval(&today);
+%put &today;
+
+%let mydate=%sysfunc(putn(%sysfunc(today()),date9.));     
+%let sysmonth= %eval(%sysfunc(month("&mydate"d)));  %let sysyear= %sysfunc(year("&mydate"d));
+
+%let curmon=%eval(&sysyear*100+&sysmonth);
+/*
+data _null_;  nQtr=(int(&curmon/100)*4+int((mod(&curmon,100)-1)/3)+1-(2000*4+1));
+call symput ("nQtr",nQtr);run;
+ %let nQtr=%eval(&nQTr);
+*/
+
+%if &sysmonth=1 %then %do; %let enddate=%eval((&sysyear-1)*100+12); %let endmo=12; %end;
+%else %do; %let enddate=%eval(&curmon-1);  %let endmo=%eval(&sysmonth-1);  %end;
+%let curindexdate=%eval(&curmon*100+1);
+ %let enddate=%eval(&curmon); %let endmo=%eval(&sysmonth);
+
+/*
+%if &sysmonth=1 %then %do; %let Histenddate=%eval((&sysyear-1)*100+11);  %end;
+%else %if &sysmonth=2 %then %do; %let Histenddate=%eval((&sysyear-1)*100+12); %end;
+%else %do; %let Histenddate=%eval(&curmon-2);  %end;
+*/
+
+%let Histenddate=%eval(&curmon); 
+%let nUnit=%eval((&sysyear-2000)*12+&sysmonth-1);
+
+%if &sysmonth>=10 %then %do; %let maxyear=%eval(&sysyear); %end; %else %do; %let maxyear=%eval(&sysyear-1); %end;
+%let nyearUnit=%eval(&maxyear-2000+1); 
+
+%put &maxyear &nyearUnit %eval(&sysmonth>=10);
+/*
+%if &endmo=1 or &endmo=2 or &endmo=3 %then %do; %let   lt_endq=%eval(&sysyear*100+1);  %let lt_curmon=%eval(&sysyear*100+3);%end;
+%else %if &endmo=4 or &endmo=5 or &endmo=6 %then %do;%let lt_endq=%eval(&sysyear*100+2);  %let lt_curmon=%eval(&sysyear*100+6);%end;
+%else %if &endmo=7 or &endmo=8 or &endmo=9 %then %do; %let lt_endq=%eval(&sysyear*100+3);   %let lt_curmon=%eval(&sysyear*100+9);%end;
+%else %do; %let lt_endq=%eval((&sysyear)*100+4);%let lt_curmon=%eval((&sysyear)*100+12);%end;
+*/
+%if &endmo=2 or &endmo=3 or &endmo=4 %then %do; %let   lt_endq=%eval(&sysyear*100+1);  %let lt_curmon=%eval(&sysyear*100+3);%end;
+%else %if &endmo=5 or &endmo=6 or &endmo=7 %then %do;%let lt_endq=%eval(&sysyear*100+2);  %let lt_curmon=%eval(&sysyear*100+6);%end;
+%else %if &endmo=8 or &endmo=9 or &endmo=10 %then %do; %let lt_endq=%eval(&sysyear*100+3);   %let lt_curmon=%eval(&sysyear*100+9);%end;
+%else %if &endmo=1 %then %do; %let lt_endq=%eval((&sysyear-1)*100+4);   %let lt_curmon=%eval((&sysyear-1)*100+12);%end;
+%else %do; %let lt_endq=%eval((&sysyear)*100+4);%let lt_curmon=%eval((&sysyear)*100+12);%end;
+%global cbsalist;
+
+%let cbsalist=10420,10580,10740,10900,11244,11460,11700,12060,12420,12540,12580,12940,13380,13820,14260,14454,14500,
+14740,14860,15380,15500,15764,15804,15980,16300,16580,16700,16740,16860,16984,17020,17140,17460,17820,
+17900,17980,18140,18580,18880,19124,19340,19660,19740,19780,19804,20100,20500,20700,20994,21340,
+21500,21660,21700,22180,22220,22380,22420,22660,22744,23104,23224,23420,23540,23844,24340,24540,24580,24660,
+24860,25180,25420,25540,25860,26420,26900,26980,27260,27740,28140,28700,28940,29404,29460,29540,29620,
+29820,30460,30700,30780,31084,31140,31540,32780,32820,33124,33340,33460,33660,33700,33874,34820,34980,
+35004,35084,35300,35380,35614,35840,35980,36084,36100,36260,36420,36500,36540,36740,37100,37340,37460,
+37860,37900,37964,38060,38300,38900, 38940,39300,39340,39460,39540,39580,39740,39820,39900,40060,40140,
+40340,40380,40484,40700,40900,41180,41420,41500,41540,41620,41700,41740,41884,41940,42020,42034,42100,
+42220,42340,42644,43100,43340,43900,44060,44100,44220,44700,45060,45104,45300,45780,45940,46060,46520,
+46700,47260,47300,47664,47894,48424,48620,48864,49180,49340,49420,49620,49660,49740;
+
+%mend;
+%initsetup; %put &lt_endq &Histenddate &lt_curmon &enddate. &curmon &sysyear.;
+
+
+data spfutures;/*https://www.cmegroup.com/markets/equities/sp/e-mini-sandp500.quotes.html*/ /*https://www.cmegroup.com/trading/equity-index/us-index/sandp-500.html*/
+input date idx;
+datalines;
+202303	3960.50
+202306	3994.50
+202309	4027.75
+202312	4057.00
+202403	4090.00
+202406	4124.00
+202409  4144.00
+202412	4174.00
+202503  4206.50
+202506  4231.00
+202512  4275.00
+202612  4358.00
+202712  4441.00
+;
+run;
+
+
+options compress=yes errors=10 source notes;
+%let cDrive=\\tvodevw10.CORP.amherst.com\C$\;
+%let tdrive=\\tvodevw10.CORP.amherst.com\T$\;
+
+
+LIBNAME devVo ODBC DSN='devVo' schema=dbo;
+LIBNAME testbed ODBC DSN='modeltestbed' schema=dbo;
+LIBNAME com ODBC DSN='asgcommon' schema=dbo;
+LIBNAME krlive ODBC DSN='krlive' schema=dbo;
+LIBNAME thirdp ODBC DSN='ThirdPartyData' schema=dbo;
+LIBNAME ir ODBC DSN='interestrates' schema=dbo;
+LIBNAME wlres ODBC DSN='ThirdPartyData' schema=dbo;
+LIBNAME ahpi ODBC DSN='amhersthpi' schema=dbo;
+LIBNAME irs ODBC DSN='irs' schema=dbo;
+LIBNAME CRE ODBC DSN='CRE' schema=dbo;
+libname wlres odbc dsn='ThirdPartyData' schema=dbo;
+LIBNAME cmbs ODBC DSN='Apollo_CMBS' schema=dbo; 
+
+%include "&cDrive.\SAS Codes\cre-macro-projections\CMBS macrovariable model macros v2.12.sas";
+%include "&cDrive.\SAS Codes\cre-macro-projections\macros to support CMBS model 1.sas";
+%include "&cDrive.\SAS Codes\cre-macro-projections\Inflation Macro.sas";
+
+%let varlistC=capr_ust10y_l2 capr_ust10y_l3 capr_ust10y_l4    ;
+%let varlistC=capr_ust10y_g_l1 capr_ust10y_g_l2     ;
+
+libname parm '\\tvodevw10\T$\Thu Output\CMBS\Macro Proj\parameters';
+
+/*
 options compress=yes errors=10;
 %let cDrive=\\tvodevW10.CORP.amherst.com\C$\;
 %let tdrive=\\tvodevw10.CORP.amherst.com\T$\;
@@ -20,6 +155,7 @@ options compress=yes errors=10;
 %let hist_input=&tDrive.\Thu Output\HPI\HPI Calculation\v2.0\SAS Input\Historical HPI inputs;
 %let census=&tDrive.\Data Source\Census Bureau;
 /*%let R_EXEC_COMMAND = &cDrive.\Program Files\R\R-3.3.1\bin\x64\Rscript.exe;*/
+/*
 %let R_EXEC_COMMAND = C:\Program Files\R\R-3.4.3\bin\x64\Rscript.exe;
 %let JAVA_BIN_DIR = &cDrive.\Thu Codes\SAS_Base_OpenSrcIntegration\bin;
 %let reportout=&tDrive.\Thu Output\HPI\Report and Quality Check\v2.0;
@@ -47,51 +183,7 @@ libname devhu odbc dsn='Devhu' schema=dbo;
 %include "&SAScodedir.\Agency_MtMLTV.sas";
 
 %let report=&cDrive.\Thu Codes\Report\;
-**************************NEED TO UPDATE EVERY MONTH***************************
-*******************************************************************************
-*******************************************************************************
-*1. Go to \\tvodev.CORP.amherst.com\T$\Thu Output\HPI\SAS Input\Long term HPI inputs\, change the name of Basket_2015-10-11_21_23.DAT to previousmonth_Basket_2015-10-11_21_23.DAT
 
-2. Download: http://www.economy.com/getfile?app=schedule&q=65BB84FA-C7FA-4408-B912-2D9E64C4B62E&f=Basket_2015-10-11_21_23.DAT
-to \\tvodev.CORP.amherst.com\T$\Thu Output\HPI\SAS Input\Long term HPI inputs\;
-*******************************************************************************
-*******************************************************************************
-******************************************************;************************;
-
-
-proc datasets library=work kill nolist;
-quit;
-
-%let rentidxTableName=irs.sf_rentIdx_monthly ;
-*%let rentidxTableName=testbed.sf_rentIdx_monthly ;
-*%let rentidxTableName=devhu.sf_rentidx_monthly2 ;
-*
-%let rentidxTableName=irs.sf_rentIdx_monthly_v2 ;
-
-
-
-data spfutures;/*https://www.cmegroup.com/markets/equities/sp/e-mini-sandp500.quotes.html*/ /*https://www.cmegroup.com/trading/equity-index/us-index/sandp-500.html*/
-input date idx;
-datalines;
-202306	4163.75
-202309	4201.75
-202312	4238.00
-202403	4272.75
-202406	4303.00
-202409  4329.00
-202412	4352.00
-202503  4386.00
-202506  4401.00
-202512  4445.00
-202612  4529.00
-202712  4614.00
-;
-run;
-
-
-options compress=yes errors=10 source notes;
-%let cDrive=\\tvodevw10.CORP.amherst.com\C$\;
-%let tdrive=\\tvodevw10.CORP.amherst.com\T$\;
 %let lt_out=&tDrive.\Thu Output\HPI\HPI Forecast\v2.1;
 
 %let SAScodedir=&cDrive.\SAS Codes\repeated-sale-hpa-v3.0;
@@ -99,7 +191,9 @@ options compress=yes errors=10 source notes;
 %let lt_input=&tDrive.\Thu Output\HPI\HPI Calculation\v2.0\SAS Input\Long term HPI inputs;
 %let hist_input=&tDrive.\Thu Output\HPI\HPI Calculation\v2.0\SAS Input\Historical HPI inputs;
 %let census=&tDrive.\Data Source\Census Bureau;
+*/
 /*%let R_EXEC_COMMAND = &cDrive.\Program Files\R\R-3.3.1\bin\x64\Rscript.exe;*/
+/*
 %let R_EXEC_COMMAND = C:\Program Files\R\R-3.4.3\bin\x64\Rscript.exe;
 %let JAVA_BIN_DIR = &cDrive.\Thu Codes\SAS_Base_OpenSrcIntegration\bin;
 %let reportout=&tDrive.\Thu Output\HPI\Report and Quality Check\v2.0;
@@ -107,18 +201,6 @@ LIBNAME Parm "&lt_out.\parameters";
 LIBNAME hpi "&outputpath.";
 LIBNAME lt_input "&lt_input.";
 LIBNAME lt_out "&lt_out.";
-LIBNAME devVo ODBC DSN='devVo' schema=dbo;
-LIBNAME testbed ODBC DSN='modeltestbed' schema=dbo;
-*LIBNAME com ODBC DSN='asgcommon' schema=dbo;
-LIBNAME krlive ODBC DSN='krlive' schema=dbo;
-LIBNAME thirdp ODBC DSN='ThirdPartyData' schema=dbo;
-LIBNAME ir ODBC DSN='interestrates' schema=dbo;
-LIBNAME wlres ODBC DSN='ThirdPartyData' schema=dbo;
-LIBNAME ahpi ODBC DSN='amhersthpi' schema=dbo;
-LIBNAME irs ODBC DSN='irs' schema=dbo;
-LIBNAME CRE ODBC DSN='CRE' schema=dbo;
-libname wlres odbc dsn='ThirdPartyData' schema=dbo;
-
 
 %include "&SAScodedir.\Amherst HPI Macros.sas";
 %include "&SAScodedir.\HPI long term forecast.sas";
@@ -132,37 +214,25 @@ libname wlres odbc dsn='ThirdPartyData' schema=dbo;
 %include "&SAScodedir.\Historical Index Fit Recent Months.sas";
 
 %include "\\tvodev\C$\SAS Codes\rent-forecast-model\Rent Idx No Cluster Forecast v5.sas"
-/*
 %include "&cDrive.\SAS Codes\rent-forecast-model\Macros For Cluster Rent Forecast.sas";
-*/
+
 %include "C:\SAS Codes\repeated-rent-index\Macros for Build Monthly Rent Index v2.sas";
-
-
-%initsetup; %put &lt_endq &Histenddate &lt_curmon &enddate. &curmon &sysyear.;
-
-
-
-%let prev_date=19971201;	%let prev_mon=199712; %let Nsim=2000;
-LIBNAME cmbs ODBC DSN='Apollo_CMBS' schema=dbo; 
-LIBNAME wlres ODBC DSN='thirdpartydata' schema=dbo;  LIBNAME testbed ODBC DSN='modeltestbed' schema=dbo;
-LIBNAME thirdP ODBC DSN='thirdpartydata' schema=dbo;
-LIBNAME ahpi ODBC DSN='amhersthpi' schema=dbo;
-LIBNAME cre ODBC DSN='cre' schema=dbo;
 libname CreMacr '\\tvodevw10\T$\Thu Output\CRE Macro';
-LIBNAME krlive ODBC DSN='krlive' schema=dbo; 	
 libname output '\\tvodevw10\T$\Thu Output\CMBS\';
 libname parm '\\tvodevw10\T$\Thu Output\CMBS\Macro Proj\parameters';
 libname oldparm '\\tvodevw10\T$\Thu Output\CMBS\Macro Proj\parameters2';
 
 libname simoutp '\\tvodevw10\T$\Thu Output\CMBS\Macro Proj\sim output';
 libname macro '\\tvodevw10\T$\Thu Output\CMBS';
+*/
 
-libname IR ODBC DSN='InterestRates' schema=dbo;
-%let cDrive=\\tvodevw10\C$\;
-%let tDrive=\\tvodevw10\T$\;
-%include "&cDrive.\SAS Codes\cre-macro-projections\CMBS macrovariable model macros v2.12.sas";
-%include "&cDrive.\SAS Codes\cre-macro-projections\macros to support CMBS model 1.sas";
 
+/*
+%initsetup; %put &lt_endq &Histenddate &lt_curmon &enddate. &curmon &sysyear.;
+*/
+
+/*
+%let prev_date=19971201;	%let prev_mon=199712; %let Nsim=2000;
 %let inputsrc= &tDrive.\Data Source\CMBS\;
 %let outputpath= &tDrive.\Thu Output\CMBS\macro proj;
 %let lt_out=&tDrive.\Thu Output\HPI\HPI Forecast\;
@@ -176,8 +246,6 @@ and not(metrocode ='FOAR' and asgproptype='RT') and not(metrocode='LAFA') and no
 %let R_EXEC_COMMAND = &cDrive.\Program Files\R\R-3.4.1\bin\x64\Rscript.exe;
 %let JAVA_BIN_DIR = &cDrive.\Thu Codes\SAS_Base_OpenSrcIntegration\bin;
 %let SAScodedir=&tDrive.\Thu Output\CMBS\Macro Proj;
-LIBNAME devVo ODBC DSN='devVo' schema=dbo;
-
 %let reportdir=&cDrive.\Thu Codes\report\;
 %let est_endqtr=201404; 
 
@@ -189,16 +257,11 @@ LIBNAME devVo ODBC DSN='devVo' schema=dbo;
 
 %include "&cDrive.\SAS Codes\rent-forecast-model\Macro For Rent Idx No Cluster Forecast.sas";
 
-%include "&cDrive.\SAS Codes\cre-macro-projections\Inflation Macro.sas";
-
-%let varlistC=capr_ust10y_l2 capr_ust10y_l3 capr_ust10y_l4    ;
-%let varlistC=capr_ust10y_g_l1 capr_ust10y_g_l2     ;
-
-LIBNAME irs ODBC DSN='irs' schema=dbo;
-LIBNAME thirdp ODBC DSN='thirdpartydata' schema=dbo;
-LIBNAME devvo ODBC DSN='devvo' schema=dbo;
-LIBNAME testbed ODBC DSN='modeltestbed' schema=dbo;
 LIBNAME parmSF '\\tvodevw10\T$\\Thu Output\SF REnt\Test'; 
+
+*/
+
+
 /*
 libname SimHPI "T:\Thu Output\HPI\HPI Forecast\v3.0\parameters\TEST"; 
 */
@@ -322,6 +385,7 @@ data infFC_IMFBE; merge infFCMonthly infMonthlyBE; by month; run;
 data infFC_imfBE; set infFC_imfBE(rename=(infBE=tp)); by month; 
 retain infBE;
 if tp ne . /*and month<&sysyear.+10*/ then infBE = tp;
+if MonthlyFCInflation ne .;
 run;
 data CPI_withFC; set CPI(rename=cpi=cpi0)  infFC_IMFBE; by month; retain cpi cpi_BE; if cpi0 ne . then do; cpi=cpi0; cpi_BE=cpi0; end;
 else do; cpi=cpi*(1+monthlyFCinflation);  cpi_BE=cpi_BE*(1+infBE); end; keep month cpi cpi_BE;run;
@@ -369,11 +433,11 @@ data housing; set irs.housing; indexcode=put(cbsa_code,$5.); keep indexcode hous
 
 %macro add_fredRent(inp,sm_url, /* URL of text data on FRED */ sm_var, /* name of variable */ 
 	sm_firstobs /* line of first data (if you are not sure and don't need the oldest data, ~25 is often safe) */);
-filename fredRent url "&sm_url";
+filename fredRent1 url "&sm_url";
 data fred_new;  infile fredRent  firstobs=&sm_firstobs;   format date yymmdd10.; input          @1 date yymmdd10.          @13 &sm_var; 
 month=year(date)*100+month(date);run; 
 proc means data=fred_new noprint; class month;var &sm_var; output out=fred_new mean=;run;
-filename fredRent; /* close file reference */
+filename fredRent1; /* close file reference */
 data fred_new; set fred_new; if month ne .; drop _TYPE_ _FREQ_; run;
 data &inp; merge &inp(in=f1) fred_new(in=f2); by month; if f1 or f2; if month ne .; drop Date; run;
 %mend;
@@ -544,6 +608,7 @@ data rawrentIdx2; set rawrentIdx1; if mod(date,100) not in (3,6,9,12) then do; d
 data rawrentIdx3; set rawrentIdx0 rawrentIdx1 rawrentIdx2; proc sort nodup; by indexcode date; run;
 
 %global fcqtrStart histEndMon;
+/*
 data test; set rawrentidx0; by indexcode date; if last.date; 
 histEndMon =  date;
 if mod(date,100) in (1,4,7,10) then do;
@@ -555,9 +620,12 @@ call symput("fcqtrStart", int(date/100)*100+mod(date,100)/3);
 call symput("histEndMon", histEndMon);
 call symput("fcqtrmo", int(date/100)*100+mod(date,100)); 
 run;
-%let fcqtrStart=%eval(&fcqtrStart*1);
-%let fcqtrmo=%eval(&fcqtrmo*1);
-%let histEndMon=%eval(&histEndMon*1);
+*/
+
+%let fcqtrStart=202203;
+%let fcqtrmo=202209;
+%let histEndMon=202209;
+
 %put &fcqtrStart &fcqtrmo &histEndMon;
 
 data rawrentIdx; merge rawRentidxOrg(rename=index=rentidx0) rawrentIdx3; by indexcode date; retain index;
