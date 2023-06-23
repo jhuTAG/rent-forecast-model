@@ -9,89 +9,12 @@ The rent projection code is in C:\SAS Codes\rent-forecast-model\Test\Rent Idx No
 
 
 
-options compress=yes errors=10;
-%let cDrive=\\tvodevW10.CORP.amherst.com\C$\;
-%let tdrive=\\tvodevw10.CORP.amherst.com\T$\;
-%let lt_out=&tDrive.\Thu Output\HPI\HPI Forecast\v2.1;
-
-%let SAScodedir=&cDrive.\SAS Codes\repeated-sale-hpa-v2;
-%let outputpath=&tDrive.\Thu Output\HPI\HPI Calculation\v2.0;
-%let lt_input=&tDrive.\Thu Output\HPI\HPI Calculation\v2.0\SAS Input\Long term HPI inputs;
-%let hist_input=&tDrive.\Thu Output\HPI\HPI Calculation\v2.0\SAS Input\Historical HPI inputs;
-%let census=&tDrive.\Data Source\Census Bureau;
-/*%let R_EXEC_COMMAND = &cDrive.\Program Files\R\R-3.3.1\bin\x64\Rscript.exe;*/
-%let R_EXEC_COMMAND = C:\Program Files\R\R-3.4.3\bin\x64\Rscript.exe;
-%let JAVA_BIN_DIR = &cDrive.\Thu Codes\SAS_Base_OpenSrcIntegration\bin;
-%let reportout=&tDrive.\Thu Output\HPI\Report and Quality Check\v2.0;
-LIBNAME Parm "&lt_out.\parameters";
-LIBNAME hpi "&outputpath.";
-LIBNAME lt_input "&lt_input.";
-LIBNAME lt_out "&lt_out.";
-LIBNAME devVo ODBC DSN='devVo' schema=dbo;
-LIBNAME testbed ODBC DSN='modeltestbed' schema=dbo;
-LIBNAME com ODBC DSN='asgcommon' schema=dbo;
-LIBNAME krlive ODBC DSN='krlive' schema=dbo;
-LIBNAME thirdp ODBC DSN='ThirdPartyData' schema=dbo;
-LIBNAME ir ODBC DSN='interestrates' schema=dbo;
-LIBNAME wlres ODBC DSN='ThirdPartyData' schema=dbo;
-LIBNAME ahpi ODBC DSN='amhersthpi' schema=dbo;
-LIBNAME irs ODBC DSN='irs' schema=dbo;
-LIBNAME CRE ODBC DSN='CRE' schema=dbo;
-libname wlres odbc dsn='ThirdPartyData' schema=dbo;
-libname devhu odbc dsn='Devhu' schema=dbo;
-
-
-%include "&SAScodedir.\Amherst HPI Macros.sas";
-%include "&SAScodedir.\HPI long term forecast.sas";
-%include "&SAScodedir.\adam_mtmltv.sas";
-%include "&SAScodedir.\Agency_MtMLTV.sas";
-
-%let report=&cDrive.\Thu Codes\Report\;
-**************************NEED TO UPDATE EVERY MONTH***************************
-*******************************************************************************
-*******************************************************************************
-*1. Go to \\tvodev.CORP.amherst.com\T$\Thu Output\HPI\SAS Input\Long term HPI inputs\, change the name of Basket_2015-10-11_21_23.DAT to previousmonth_Basket_2015-10-11_21_23.DAT
-
-2. Download: http://www.economy.com/getfile?app=schedule&q=65BB84FA-C7FA-4408-B912-2D9E64C4B62E&f=Basket_2015-10-11_21_23.DAT
-to \\tvodev.CORP.amherst.com\T$\Thu Output\HPI\SAS Input\Long term HPI inputs\;
-*******************************************************************************
-*******************************************************************************
-******************************************************;************************;
-
-
 proc datasets library=work kill nolist;
 quit;
 
-%let rentidxTableName=irs.sf_rentIdx_monthly ;
-*%let rentidxTableName=testbed.sf_rentIdx_monthly ;
-*%let rentidxTableName=devhu.sf_rentidx_monthly2 ;
-*
-%let rentidxTableName=irs.sf_rentIdx_monthly_v2 ;
-
-
-
-data spfutures;/*https://www.cmegroup.com/markets/equities/sp/e-mini-sandp500.quotes.html*/ /*https://www.cmegroup.com/trading/equity-index/us-index/sandp-500.html*/
-input date idx;
-datalines;
-202306	4163.75
-202309	4201.75
-202312	4238.00
-202403	4272.75
-202406	4303.00
-202409  4329.00
-202412	4352.00
-202503  4386.00
-202506  4401.00
-202512  4445.00
-202612  4529.00
-202712  4614.00
-;
-run;
-
-
 options compress=yes errors=10 source notes;
-%let cDrive=\\tvodevw10.CORP.amherst.com\C$\;
-%let tdrive=\\tvodevw10.CORP.amherst.com\T$\;
+%let cDrive=\\czhaodev\TDrive\C Drive;
+%let tdrive=\\czhaodev\TDrive;
 %let lt_out=&tDrive.\Thu Output\HPI\HPI Forecast\v2.1;
 
 %let SAScodedir=&cDrive.\SAS Codes\repeated-sale-hpa-v3.0;
@@ -118,20 +41,50 @@ LIBNAME ahpi ODBC DSN='amhersthpi' schema=dbo;
 LIBNAME irs ODBC DSN='irs' schema=dbo;
 LIBNAME CRE ODBC DSN='CRE' schema=dbo;
 libname wlres odbc dsn='ThirdPartyData' schema=dbo;
+libname devhu odbc dsn='Devhu' schema=dbo;
 
 
 %include "&SAScodedir.\Amherst HPI Macros.sas";
 %include "&SAScodedir.\HPI long term forecast.sas";
 %include "&SAScodedir.\adam_mtmltv.sas";
 %include "&SAScodedir.\Agency_MtMLTV.sas";
+
 %let report=&cDrive.\Thu Codes\Report\;
+
+
+%let rentidxTableName=irs.sf_rentIdx_monthly ;
+*%let rentidxTableName=testbed.sf_rentIdx_monthly ;
+*%let rentidxTableName=devhu.sf_rentidx_monthly2 ;
+*
+%let rentidxTableName=irs.sf_rentIdx_monthly_v2 ;
+
+
+
+data spfutures;/*https://www.cmegroup.com/markets/equities/sp/e-mini-sandp500.quotes.html*/ /*https://www.cmegroup.com/trading/equity-index/us-index/sandp-500.html*/
+input date idx;
+datalines;
+202306	4190.50
+202309	4232.25
+202312	4273.75
+202403	4315.75
+202406	4352.00
+202409  4380.00
+202412	4408.00
+202503  4430.00
+202506  4445.00
+202512  4490.00
+202612  4575.00
+202712  4660.00
+;
+run;
+
 
 %include "&SAScodedir.\HPI long term model fit and score macros v2.4.sas";
 %include "&SAScodedir.\HPI long term forecast macros v6.2 IPUMS v2.sas";
 %include "&SAScodedir.\Historical Index Fit All.sas";
 %include "&SAScodedir.\Historical Index Fit Recent Months.sas";
 
-%include "\\tvodev\C$\SAS Codes\rent-forecast-model\Rent Idx No Cluster Forecast v5.sas"
+%include "\\czhaodev\TDrive\C Drive\SAS Codes\rent-forecast-model\Rent Idx No Cluster Forecast v5.sas"
 /*
 %include "&cDrive.\SAS Codes\rent-forecast-model\Macros For Cluster Rent Forecast.sas";
 */
@@ -143,23 +96,25 @@ libname wlres odbc dsn='ThirdPartyData' schema=dbo;
 
 
 %let prev_date=19971201;	%let prev_mon=199712; %let Nsim=2000;
+
 LIBNAME cmbs ODBC DSN='Apollo_CMBS' schema=dbo; 
-LIBNAME wlres ODBC DSN='thirdpartydata' schema=dbo;  LIBNAME testbed ODBC DSN='modeltestbed' schema=dbo;
-LIBNAME thirdP ODBC DSN='thirdpartydata' schema=dbo;
+LIBNAME wlres ODBC DSN='thirdpartydata' schema=dbo; 
+LIBNAME testbed ODBC DSN='modeltestbed' schema=dbo;
 LIBNAME ahpi ODBC DSN='amhersthpi' schema=dbo;
 LIBNAME cre ODBC DSN='cre' schema=dbo;
-libname CreMacr '\\tvodevw10\T$\Thu Output\CRE Macro';
-LIBNAME krlive ODBC DSN='krlive' schema=dbo; 	
-libname output '\\tvodevw10\T$\Thu Output\CMBS\';
-libname parm '\\tvodevw10\T$\Thu Output\CMBS\Macro Proj\parameters';
-libname oldparm '\\tvodevw10\T$\Thu Output\CMBS\Macro Proj\parameters2';
+LIBNAME krlive ODBC DSN='krlive' schema=dbo; 
 
-libname simoutp '\\tvodevw10\T$\Thu Output\CMBS\Macro Proj\sim output';
-libname macro '\\tvodevw10\T$\Thu Output\CMBS';
+libname CreMacr '\\czhaodev\TDrive\Thu Output\CRE Macro';	
+libname output '\\czhaodev\TDrive\Thu Output\CMBS\';
+libname parm '\\czhaodev\TDrive\Thu Output\CMBS\Macro Proj\parameters';
+libname oldparm '\\czhaodev\TDrive\Thu Output\CMBS\Macro Proj\parameters2';
+
+libname simoutp '\\czhaodev\TDrive\Thu Output\CMBS\Macro Proj\sim output';
+libname macro '\\czhaodev\TDrive\Thu Output\CMBS';
 
 libname IR ODBC DSN='InterestRates' schema=dbo;
-%let cDrive=\\tvodevw10\C$\;
-%let tDrive=\\tvodevw10\T$\;
+LIBNAME devVo ODBC DSN='devVo' schema=dbo;
+
 %include "&cDrive.\SAS Codes\cre-macro-projections\CMBS macrovariable model macros v2.12.sas";
 %include "&cDrive.\SAS Codes\cre-macro-projections\macros to support CMBS model 1.sas";
 
@@ -176,7 +131,6 @@ and not(metrocode ='FOAR' and asgproptype='RT') and not(metrocode='LAFA') and no
 %let R_EXEC_COMMAND = &cDrive.\Program Files\R\R-3.4.1\bin\x64\Rscript.exe;
 %let JAVA_BIN_DIR = &cDrive.\Thu Codes\SAS_Base_OpenSrcIntegration\bin;
 %let SAScodedir=&tDrive.\Thu Output\CMBS\Macro Proj;
-LIBNAME devVo ODBC DSN='devVo' schema=dbo;
 
 %let reportdir=&cDrive.\Thu Codes\report\;
 %let est_endqtr=201404; 
@@ -198,7 +152,7 @@ LIBNAME irs ODBC DSN='irs' schema=dbo;
 LIBNAME thirdp ODBC DSN='thirdpartydata' schema=dbo;
 LIBNAME devvo ODBC DSN='devvo' schema=dbo;
 LIBNAME testbed ODBC DSN='modeltestbed' schema=dbo;
-LIBNAME parmSF '\\tvodevw10\T$\\Thu Output\SF REnt\Test'; 
+LIBNAME parmSF '\\czhaodev\TDrive\\Thu Output\SF REnt\Test'; 
 /*
 libname SimHPI "T:\Thu Output\HPI\HPI Forecast\v3.0\parameters\TEST"; 
 */
@@ -225,18 +179,18 @@ data &inp; merge &inp(in=f1) fred_new(in=f2); by month; if f1 or f2; if month ne
 data infFC; *https://www.imf.org/external/datamapper/PCPIEPCH@WEO/OEMDC/ADVEC/WEOWORLD/USA;
 input yr annualInf;
 datalines;
-2023 2.3
+2023 3
 2024 2.1
-2025 2
+2025 2.1
 2026 2
-2027 2.1
-2028 2.1
-2029 2.1
-2030 2.1
-2031 2.1
-2032 2.1
-2033 2.1
-2034 2.1
+2027 2.3
+2028 1.6
+2029 1.6
+2030 1.6
+2031 1.6
+2032 1.6
+2033 1.6
+2034 1.6
 ;run;
 
 
@@ -277,7 +231,7 @@ do year=yr to yr+1;
 	do monthID=1 to 12; 
 		month=year*100+monthID; 
 		infBE=.;
-		 if (monthID>=mod(asofDate,100)-1 and year=yr) or (monthID<mod(asofDate,100) and year=yr+1) or ( mod(asofDate,100)=1 and monthID>=12 and year=yr-1)
+		 if (monthID> mod(asofDate,100)-1 and year=yr) or (monthID<mod(asofDate,100) and year=yr+1) or ( mod(asofDate,100)=1 and monthID>=12 and year=yr-1)
 		  /*or (monthid = mod(asofDate,100)-1 and year = baseYr)*/ or  ( mod(asofDate,100)=1 and monthID>=12 and year=baseYr-1)
 		then infBE=(annualInf/100+1)**(1/12)-1; 
 		
@@ -318,7 +272,7 @@ on 1=1
 join YTDCPI ytdmo
 on yr*100+monthID>ytdcpi.month ; proc sort nodup;  by  month;run;
 
-data infFC_IMFBE; merge infFCMonthly infMonthlyBE; by month; run;
+data infFC_IMFBE; merge infFCMonthly infMonthlyBE; by month; if MonthlyFCInflation ne .; run;
 data infFC_imfBE; set infFC_imfBE(rename=(infBE=tp)); by month; 
 retain infBE;
 if tp ne . /*and month<&sysyear.+10*/ then infBE = tp;
@@ -340,7 +294,8 @@ run;
 
 
 ** GET ELASTICITY;
-data landelastic;infile "T:\Thu Output\HPI\HPI Calculation\v3.0\SAS Input\Long term HPI inputs\top100cbsa info_with undevelopable.txt" delimiter = '09'x missover dsd lrecl=32767 firstobs=1 ; format moodyname $50.;
+
+data landelastic;infile "\\czhaodev\TDrive\Thu Output\HPI\HPI Calculation\v3.0\SAS Input\Long term HPI inputs\top100cbsa info_with undevelopable.txt" delimiter = '09'x missover dsd lrecl=32767 firstobs=1 ; format moodyname $50.;
 input  moodyid $	moodyname $	cbsa_div	cbsa_code	position saizlandelastic
 censusdivision	obslandsles	landvalue adjlandvalue	housingcost	adjhousingcost	wages	constonlywages	
 regindex	landinelastic 	constcostindex	rawhousing tradables top50 undevelopable rawsaiz; if not missing(position);
@@ -355,7 +310,6 @@ proc sort nodup; by indexcode;run;
 proc delete data= testbed.landelastic;
 data testbed.landelastic; set landelastic; run;
 */
-
 
 
  /*
@@ -386,7 +340,7 @@ data rate_frm_mo; format month BEST12.; run;
 %add_fredRent(inp=rate_frm_mo,sm_url=http://research.stlouisfed.org/fred2/data/GS2.txt, sm_var=cmt_2yr, sm_firstobs=16);
 %add_fredRent(inp=rate_frm_mo,sm_url=http://research.stlouisfed.org/fred2/data/GS10.txt, sm_var=cmt_10yr, sm_firstobs=16);
 *%add_fredRent(inp=rate_frm_mo,sm_url=http://research.stlouisfed.org/fred2/data/USD3MTD156N.txt, sm_var=libor_3m, sm_firstobs=33);
-proc export data=rate_frm_mo outfile="&lt_out.\monthly frm30 & swap2-10 rate since 199001.csv" replace; run;
+*proc export data=rate_frm_mo outfile="&lt_out.\monthly frm30 & swap2-10 rate since 199001.csv" replace; run;
 %end;
 
 data rate_frm; set rate_frm_mo; qtr=int(month/100)*100+int((month-int(month/100)*100-1)/3)+1;run;
@@ -1138,7 +1092,7 @@ timestamp=input(put(substr(rate_timestamp,1,4)*10000+substr(rate_timestamp,6,2)*
 month=year(intnx('month',timestamp,mo))*100+month(intnx('month',timestamp,mo));
 end;
 refi_rate=refi_rate+&shock;
- keep path_num  month refi_rate cmt_2yr cmt_10yr libor_3m; proc sort nodup; by month; run;
+ keep path_num  month refi_rate cmt_2yr cmt_10yr libor_3m rate_timestamp; proc sort nodup; by month; run;
 
 data rate_frm_mo2; set rate_frm_mo;  do path_num=0 to 1000; output; end; run;
 data rate_frm2_0; set rate_frm_mo2 rate2(in=f2); if f2 then priority=0; else priority=1; 
@@ -1205,6 +1159,7 @@ chgrefi1_2=lag(refi_rate)-lag2(refi_rate); chgrefi1_3=lag(refi_rate)-lag3(refi_r
 chgrefi2_4=lag2(refi_rate)-lag4(refi_rate);  
 if path_num ne lag8(path_num) then delete; run;
 proc sort nodup; by path_num qtr; run;
+proc means data=rate_frm2; var refi_rate; class qtr; where qtr<202800; quit;
 
 %let startsim=1; %let endsim=10;
 
@@ -1541,6 +1496,10 @@ LIBNAME irs ODBC DSN='irs' schema=dbo;
 proc sort data=allsim; by indexcode simid qtr; run;
 data allsim; merge allsim(in=f1) housing ; by indexcode; if f1; run;
 
+proc means DATA =ALLSIM; class qtr; var rentg rentg_sa; weight housing; where qtr<202800 AND INDEXCODE='12060'; run;
+
+proc sql; select count(distinct indexcode) from allsim; quit;
+
 /*
 proc sql; create table allsim as select distinct * from allsim b join (select distinct simid,indexcode,qtr from allsimprod) a
 on b.simid=a.simid and b.indexcode=a.indexcode and b.qtr=a.qtr;run;
@@ -1703,8 +1662,10 @@ fundspread_l1= fundspread;
 drop sp500_chg capr_ust10y_g_l1 capr_ust10y_g qtr;
 if first.simid then do; vacancy_l1=.;pprcaprate_l1=.; sp500_idx_l1=.; unemp_l1=.; inc_p50_l1=.; inc_mean_l1=.; capr_ust10y_l1=.; rentidx_l1=.; rentidx_sa_l1=.; hpi_l1=.; fundspread_l1=.; end;
 run;
-data allsim_output_Monthly1; set allsim_output_Monthly0; idx+1; if mod(date,100)<12 then date=date+1; else date=int(date/100)*100+101;  run;
-data allsim_output_Monthly2; set allsim_output_Monthly1; idx+1;  if mod(date,100)<12 then date=date+1; else date=int(date/100)*100+101;  run;
+data allsim_output_Monthly1; set allsim_output_Monthly0; idx+1; 
+if mod(date,100)<12 then date=date+1; else date=int(date/100)*100+101;  run;
+data allsim_output_Monthly2; set allsim_output_Monthly1; idx+1;  
+if mod(date,100)<12 then date=date+1; else date=int(date/100)*100+101;  run;
 
 data allsim_output_Monthly; set allsim_output_Monthly0 allsim_output_Monthly1 allsim_output_Monthly2; 
 by    indexcode simid descending date;
@@ -1757,28 +1718,70 @@ if first.indexcode then index=.;
 if rentidx0>0 then index=rentidx0;
 else index=index*(1+rentg); drop rentidx0  ; 
 if date<=&histendmon.;
-/*datefmt=input(put(date*100+1,8.),yymmdd10.);format datefmt  date9.;*/
-keep indexcode date index ; run;
+datefmt=input(put(date*100+1,8.),yymmdd10.);format datefmt  date9.;
+keep indexcode date index datefmt; run;
+
+
+** SA for historical period only;
+proc x12 data=sf_rentIdx_month_dt0 date=datefmt noprint interval=month; by indexcode; var index;    x11;    output out=sa_hist d11;    ods select d11; run;
+
+data sf_rentIdx_month_dt0a; merge sf_rentIdx_month_dt0(in=f1) sa_hist(rename = (index_d11= index_sa)); by indexcode datefmt; if f1; 
+rentg = index/lag(index)-1;
+rentg_sa = index_sa/lag(index_sa)-1;
+if first.indexcode then do; rentg=.; rentg_sa=.; end;
+run;
+
 
 proc sql; create table cbsa2state as 
-select distinct case when cbsadiv='' then cbsa else cbsadiv end as indexcode, date, avg(rentidx) as rentidx_st 
-from thirdp.county_dt join meanpath on state=indexcode where cbsa ne ''
-group by indexcode,date order by indexcode,date;
+select distinct case when cbsadiv='' then cbsa else cbsadiv end as indexcode, date, avg(rentg) as rentg_st , avg(rentg_sa) as rentg_sa_st
+from thirdp.county_dt c
+join meanpath m
+on state=m.indexcode 
+join (select distinct indexcode from sf_rentIdx_month_dt0a) r
+on r.indexcode = coalesce(c.cbsadiv, c.cbsa)
+where cbsa ne ''
+group by case when cbsadiv='' then cbsa else cbsadiv end,date 
+order by case when cbsadiv='' then cbsa else cbsadiv end,date;
 run;
 
 
-proc sql; create table cbsa2US as select distinct case when cbsadiv='' then cbsa else cbsadiv end as indexcode, date, avg(rentidx) as rentidx_US
-from thirdp.county_dt join meanpath on 'US'=indexcode where cbsa ne ''
-group by indexcode,date order by indexcode,date;
+proc sql; create table cbsa2US as 
+select distinct case when cbsadiv='' then cbsa else cbsadiv end as indexcode, date, avg(rentg) as rentg_us , avg(rentg_sa) as rentg_sa_us
+from thirdp.county_dt  c
+join meanpath m
+on 'US'=indexcode
+join (select distinct indexcode from sf_rentIdx_month_dt0a) r
+on r.indexcode = coalesce(c.cbsadiv, c.cbsa)
+where cbsa ne ''
+group by case when cbsadiv='' then cbsa else cbsadiv end ,date 
+order by case when cbsadiv='' then cbsa else cbsadiv end ,date;
 run;
 
-data sf_rentIdx_month_dt; merge sf_rentIdx_month_dt0(rename=index=index0) meanpath(keep=indexcode date rentidx) cbsa2state cbsa2US; by indexcode date;retain index index_last;
-if rentidx=. then rentidx=rentidx_st; 
-if rentidx=. then rentidx=rentidx_us;
-if first.indexcode then index=.;
+data meanPath1; set meanPath;
+if rentg ne . then rentg=(1+rentg)**(1/3)-1;
+if rentg_sa ne . then rentg_sa = (1+rentg_sa)**(1/3)-1;
+run;
+
+data sf_rentIdx_month_dt; merge sf_rentIdx_month_dt0a(rename=(index=index0 index_sa = index_sa0))
+meanpath1(keep=indexcode date rentg rentg_sa) cbsa2state cbsa2US; by indexcode date;
+retain index index_sa;
+
+if rentg=. then rentg=rentg_st; 
+if rentg=. then rentg=rentg_us;
+if rentg_sa=. then rentg_Sa=rentg_sa_st; 
+if rentg_sa=. then rentg_sa=rentg_sa_us;
+/*
+if rentg ne . then rentg=(1+rentg)**(1/3)-1;
+if rentg_sa ne . then rentg_sa = (1+rentg_sa)**(1/3)-1;
+*/
+if first.indexcode then do; index=index0; index_sa = index_sa0; end;
+else do; index = index * (1+rentg); index_sa = index_sa*(1+rentg_sa); end;
+/*
 if index0 ne . then do; index=index0; index_last=index0; end; else index=index_last*rentidx;
+*/
 indexmonth=input(put(date*100+1,8.),YYMMDD10.); format indexmonth date9.;
-keep index date indexcode  indexmonth;
+
+keep index index_sa date indexcode  indexmonth;
 run;
 proc sort; by indexcode indexmonth; run;
 
@@ -1790,12 +1793,12 @@ group by indexcode
 having  min(date)<202102
 order by indexcode, date;
 quit;
-
+/*
 proc x12 data=sf_rentIdx_month_dt date=indexmonth noprint interval=month; by indexcode ; var index;   
 x11;    output out=sa_all d11;    ods select d11; run;
 
 data sf_rentidx_month_dt; merge sf_rentIdx_month_dt(in=f1) sa_all(in=f2 rename=(index_d11 = index_sa)); by indexcode indexmonth; run;
-
+*/
 
 proc delete data=devhu.bak_sf_rentIdx_month_dt2;
 data devhu.bak_sf_rentIdx_month_dt2&enddate.(insertbuff=30000); set irs.sf_rentIdx_month_dt;run;
@@ -1808,6 +1811,8 @@ proc delete data=testbed.load_sf_rentIdx_month_dt;
 data  testbed.load_sf_rentIdx_month_dt(insertbuff=30000); set sf_rentIdx_month_dt; cluster='agg'; 
 ;FORMAT indexmonth date9.; drop date; run;
 
+DATA TP; SET US_MEAN;
+
 data test;set irs.sf_rentidx_month_dt; run;
 proc sort; by indexcode indexmonth; run;
 
@@ -1816,3 +1821,4 @@ x11;    output out=sa_all d11;    ods select d11; run;
 LIBNAME devhu ODBC DSN='devhu' schema=dbo;
 
 data devhu.tp_sa(insertbuff=32000); set sa_all; run;
+proc means data=rate2; where month>202212 and month<202900;; var refi_rate; class month; run;
